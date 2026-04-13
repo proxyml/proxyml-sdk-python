@@ -2,6 +2,16 @@
 
 Python SDK for the [ProxyML API](https://proxyml.ai).
 
+> **Status:** Early access — server endpoints coming soon.  
+> [Request early access](mailto:contact@proxyml.ai) or star this repo to follow progress.
+
+## Why ProxyML?
+
+Most explainability tools require sending your data to a third-party server. 
+ProxyML never sees your training data. You generate synthetic data locally, 
+score it with your own model, and only the surrogate model and summary 
+statistics are uploaded — your data stays yours.
+
 ## Installation
 
 ```bash
@@ -50,7 +60,7 @@ proxyml.train_surrogate(
 )
 
 # 6. Find a counterfactual explanation
-sample = synth_df.iloc[0].tolist()
+sample = df.iloc[0].tolist()
 cf = proxyml.find_counterfactual(sample=sample, target=1, version=None)
 
 if cf is not None:

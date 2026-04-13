@@ -44,9 +44,6 @@ def put(endpoint: str, payload: dict) -> requests.models.Response:
     return r
 
 
-
-
-
 def put_schema(schema: dict):
     r = put(endpoint='/schema', payload=schema)
     if r.status_code == 200:

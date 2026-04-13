@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "proxyml"
+version = "0.1.0"
+description = "Python SDK for calling the ProxyML API"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "ProxyML", email = "contact@proxyml.ai"}
+]
+keywords = ["machine learning", "api", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.28",
+    "numpy>=1.23",
+    "pandas>=1.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "twine",
+]
+
+[project.urls]
+Homepage = "https://proxyml.ai"
+Documentation = "https://github.com/proxyml/proxyml-python/blob/main/docs/quickstart.md"
+Repository = "https://github.com/proxyml/proxyml-python"
+"Bug Tracker" = "https://github.com/proxyml/proxyml-python/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]

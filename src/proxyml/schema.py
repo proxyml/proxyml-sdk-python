@@ -7,7 +7,7 @@ import pandas as pd
 from pandas.api.types import is_float_dtype, is_integer_dtype
 
 
-def gen_continuous_schema(s: pd.Series, name: str | None) -> dict:
+def gen_continuous_schema(s: pd.Series, name: str | None = None) -> dict:
     return {
         'type': 'continuous',
         'name': name or s.name,
@@ -18,7 +18,7 @@ def gen_continuous_schema(s: pd.Series, name: str | None) -> dict:
     }
 
 
-def gen_categorical_schema(s: pd.Series, name: str | None) -> dict:
+def gen_categorical_schema(s: pd.Series, name: str | None = None) -> dict:
     counts = s.value_counts(normalize=True)                                                                                                                                         
     return {                                        
         'type': 'categorical',
@@ -27,7 +27,7 @@ def gen_categorical_schema(s: pd.Series, name: str | None) -> dict:
     }
 
 
-def gen_discrete_schema(s: pd.Series, name: str | None) -> dict:
+def gen_discrete_schema(s: pd.Series, name: str | None = None) -> dict:
     return {                                        
         'type': 'count',
         'name': name or s.name,    

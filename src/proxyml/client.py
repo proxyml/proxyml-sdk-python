@@ -70,7 +70,7 @@ def _cast_column(series: pd.Series, ftype: str) -> pd.Series:
     return series                                                                                                                                                                     
                                                             
                                                                                                                                                                                         
-def synthesize_data(num_points: int = 100, sample: list | None, as_df: bool = True):
+def synthesize_data(num_points: int = 100, sample: list | None = None, as_df: bool = True):
     if sample is None:                                                                                                                                                                
         r = post(endpoint='/synthesize/neighbors', payload={'n': num_points})                                                                                                         
     else:
@@ -124,7 +124,7 @@ def predict(samples: list, version: int | None):  # Defaults to latest version i
     return None 
 
 
-def find_counterfactual(sample, target, n_neighbors: int = 10000, perturbation_scale: float = 0.1, version: int | None, as_df: bool = True):
+def find_counterfactual(sample, target, n_neighbors: int = 10000, perturbation_scale: float = 0.1, version: int | None = None, as_df: bool = True):
     payload = {
         'instance': sample,
         'target_label': target,

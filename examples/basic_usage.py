@@ -28,22 +28,22 @@ black_box.fit(df.values, y)
 # 2. Generate and upload a schema
 # ---------------------------------------------------------------------------
 schema = get_schema(df, immutable_cols=None)
-print("Schema generated. Features:", [f["name"] for f in schema["features"]])
+print("\nSchema generated. Features:", [f["name"] for f in schema["features"]])
 
 result = proxyml.put_schema(schema)
-print("Schema upload result:", result)
+print("\nSchema upload result:", result)
 
 # ---------------------------------------------------------------------------
 # 3. Synthesize training data for the surrogate
 # ---------------------------------------------------------------------------
 synth_df = proxyml.synthesize_data(num_points=500)
-print(f"Synthesized {len(synth_df)} rows with columns: {list(synth_df.columns)}")
+print(f"\nSynthesized {len(synth_df)} rows with columns: {list(synth_df.columns)}")
 
 # ---------------------------------------------------------------------------
 # 4. Score synthetic data with the black-box model
 # ---------------------------------------------------------------------------
 predictions = black_box.predict(synth_df.values).tolist()
-print(f"Label distribution: {np.unique(predictions, return_counts=True)}")
+print(f"\nLabel distribution: {np.unique(predictions, return_counts=True)}")
 
 # ---------------------------------------------------------------------------
 # 5. Train a surrogate model
@@ -55,13 +55,14 @@ train_result = proxyml.train_surrogate(
     task="classification",
     test_size=0.2,
 )
-print("Surrogate training result:", train_result)
+print("\nSurrogate training result:", train_result)
+print("\nSurrogate feature importance:", proxyml.get_feature_importances(version=train_result["version"]))
 
 # ---------------------------------------------------------------------------
 # 6. Query the surrogate
 # ---------------------------------------------------------------------------
 sample = df.iloc[0].tolist()
 pred_result = proxyml.predict(samples=sample, version=None)
-print("Sample 0 classification:", y[0])
-print("Local prediction for sample 0:", black_box.predict_proba([sample])[0])
-print("Surrogate prediction for sample 0:", pred_result)
+print("\nSample 0 classification:", y[0])
+print("\nLocal prediction for sample 0:", black_box.predict_proba([sample])[0])
+print("\nSurrogate prediction for sample 0:", pred_result)

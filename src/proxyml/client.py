@@ -44,6 +44,15 @@ def put(endpoint: str, payload: dict) -> requests.models.Response:
     return r
 
 
+def get(endpoint: str, params: dict) -> requests.models.Response:
+    r = requests.get(
+        url=f'{PROXYML_BASE_URL}{endpoint}',
+        headers=_headers(),
+        params=params
+    )
+    return r
+
+
 def put_schema(schema: dict):
     r = put(endpoint='/schema', payload=schema)
     if r.status_code == 200:
@@ -188,3 +197,16 @@ def interpret_counterfactual(
             f"This may indicate the surrogate model does not fully capture "
             f"the original model's decision boundary in this region."
         )
+
+
+def get_feature_importances(version: int | None = None, ):
+    params = {'version': version} if version else {}
+    r = get(endpoint='/explain/importance', params=params)
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Feature importances failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None 

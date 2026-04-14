@@ -5,6 +5,7 @@ from proxyml.client import (
     predict,
     find_counterfactual,
     interpret_counterfactual,
+    get_feature_importances,
 )
 from proxyml.schema import (
     get_schema,

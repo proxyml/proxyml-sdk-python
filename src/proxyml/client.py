@@ -136,10 +136,10 @@ def predict(samples: list, version: int | None):  # Defaults to latest version i
 def find_counterfactual(sample, target, n_neighbors: int = 10000, perturbation_scale: float = 0.1, version: int | None = None, as_df: bool = True):
     payload = {
         'instance': sample,
-        'target_label': target,
+        'target_label': target.item() if hasattr(target, 'item') else target,  # handle numpy scalars
         'n_neighbors': n_neighbors,
         'perturbation_scale': perturbation_scale,
-    }
+    }    
     if version:  # Also rejects version 0 (versions start at 1)
         payload['version'] = version 
     r = post(endpoint='/explain/counterfactual', payload=payload)

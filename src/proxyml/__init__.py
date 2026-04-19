@@ -6,6 +6,8 @@ from proxyml.client import (
     find_counterfactual,
     interpret_counterfactual,
     get_feature_importances,
+    list_models,
+    delete_model,
 )
 from proxyml.schema import (
     get_schema,
@@ -21,6 +23,9 @@ __all__ = [
     "predict",
     "find_counterfactual",
     "interpret_counterfactual",
+    "get_feature_importances",
+    "list_models",
+    "delete_model",
     "get_schema",
     "gen_continuous_schema",
     "gen_categorical_schema",

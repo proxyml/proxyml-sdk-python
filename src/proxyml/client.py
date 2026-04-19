@@ -53,6 +53,14 @@ def get(endpoint: str, params: dict) -> requests.models.Response:
     return r
 
 
+def delete(endpoint: str) -> requests.models.Response:
+    r = requests.delete(
+        url=f'{PROXYML_BASE_URL}{endpoint}',
+        headers=_headers()
+    )
+    return r
+
+
 def put_schema(schema: dict):
     r = put(endpoint='/schema', payload=schema)
     if r.status_code == 200:
@@ -66,48 +74,61 @@ def put_schema(schema: dict):
     return None
 
 
-def _cast_column(series: pd.Series, ftype: str) -> pd.Series:                                                                                                                         
-    if ftype in ("continuous",):                                                                                                                                                      
-        return series.astype(float)                                                                                                                                                   
-    if ftype in ("count", "numeric_ordinal"):                                                                                                                                         
+def _cast_column(series: pd.Series, ftype: str) -> pd.Series:
+    if ftype in ("continuous",):
+        return series.astype(float)
+    if ftype in ("count", "numeric_ordinal"):
         return series.astype(int)
-    if ftype in ("categorical", "categorical_ordinal"):                                                                                                                               
+    if ftype in ("categorical", "categorical_ordinal"):
         # convert "true"/"false" strings back to booleans when appropriate
-        unique = {str(v).lower() for v in series.dropna().unique()}                                                                                                                   
-        if unique <= _BOOL_STRINGS:                                                                                                                                                   
-            return series.map({"true": True, "false": False, True: True, False: False})                                                                                               
-    return series                                                                                                                                                                     
-                                                            
-                                                                                                                                                                                        
+        unique = {str(v).lower() for v in series.dropna().unique()}
+        if unique <= _BOOL_STRINGS:
+            return series.map({"true": True, "false": False, True: True, False: False})
+    return series
+
+
 def synthesize_data(num_points: int = 100, sample: list | None = None, as_df: bool = True):
-    if sample is None:                                                                                                                                                                
-        r = post(endpoint='/synthesize/neighbors', payload={'n': num_points})                                                                                                         
+    if sample is None:
+        r = post(endpoint='/synthesize/neighbors', payload={'n': num_points})
     else:
-        r = post(endpoint='/synthesize/blended', payload={'n': num_points, 'instance': [col.item() for col in sample]})                                                               
-    if r.status_code == 200:                                                                                                                                                          
-        payload = r.json()                                                                                                                                                            
-        if as_df:                                                                                                                                                                     
+        r = post(endpoint='/synthesize/blended', payload={'n': num_points, 'instance': [col.item() for col in sample]})
+    if r.status_code == 200:
+        payload = r.json()
+        if as_df:
             df = pd.DataFrame(payload['samples'], columns=payload['feature_names'])
-            for col, ftype in zip(payload['feature_names'], payload['feature_types']):                                                                                                
+            for col, ftype in zip(payload['feature_names'], payload['feature_types']):
                 df[col] = _cast_column(df[col], ftype)
-            return df                                                                                                                                                                 
+            return df
         return payload
     logger.error(
         "Data synthesis failed with status %s: %s",
         r.status_code,
         r.text
     )
-    return None 
+    return None
 
 
 def train_surrogate(
-        samples: list, 
-        predictions: list, 
+        samples: list,
+        predictions: list,
         feature_names: list[str] | None,
-        task: str = 'auto', 
-        test_size: float = 0.2
+        task: str = 'auto',
+        test_size: float = 0.2,
+        name: str | None = None,
+        comments: str | None = None,
     ):
-    r = post(endpoint='/surrogate/train', payload={'samples': samples, 'predictions': predictions, 'feature_names': feature_names, 'task': task, 'test_size': test_size})
+    payload = {
+        'samples': samples,
+        'predictions': predictions,
+        'feature_names': feature_names,
+        'task': task,
+        'test_size': test_size,
+    }
+    if name is not None:
+        payload['name'] = name
+    if comments is not None:
+        payload['comments'] = comments
+    r = post(endpoint='/surrogate/train', payload=payload)
     if r.status_code == 200:
         return r.json()
     logger.error(
@@ -115,13 +136,13 @@ def train_surrogate(
         r.status_code,
         r.text
     )
-    return None 
+    return None
 
 
-def predict(samples: list, version: int | None):  # Defaults to latest version if not specified
+def predict(samples: list, version: str | None = None):
     payload = {'inputs': samples}
-    if version:  # Also rejects version 0 (versions start at 1)
-        payload['version'] = version 
+    if version is not None:
+        payload['version'] = version
     r = post(endpoint='/surrogate/predict', payload=payload)
     if r.status_code == 200:
         return r.json()
@@ -130,21 +151,21 @@ def predict(samples: list, version: int | None):  # Defaults to latest version i
         r.status_code,
         r.text
     )
-    return None 
+    return None
 
 
-def find_counterfactual(sample, target, n_neighbors: int = 10000, perturbation_scale: float = 0.1, version: int | None = None, as_df: bool = True):
+def find_counterfactual(sample, target, n_neighbors: int = 10000, perturbation_scale: float = 0.1, version: str | None = None, as_df: bool = True):
     payload = {
         'instance': sample,
-        'target_label': target.item() if hasattr(target, 'item') else target,  # handle numpy scalars
+        'target_label': target.item() if hasattr(target, 'item') else target,
         'n_neighbors': n_neighbors,
         'perturbation_scale': perturbation_scale,
-    }    
-    if version:  # Also rejects version 0 (versions start at 1)
-        payload['version'] = version 
+    }
+    if version is not None:
+        payload['version'] = version
     r = post(endpoint='/explain/counterfactual', payload=payload)
     if r.status_code == 200:
-        payload = r.json()                                                                                                                                                            
+        payload = r.json()
         if as_df:
             if payload['counterfactual'] is None:
                 print(f"No counterfactual found: {payload.get('warning')}")
@@ -159,7 +180,7 @@ def find_counterfactual(sample, target, n_neighbors: int = 10000, perturbation_s
         r.status_code,
         r.text
     )
-    return None 
+    return None
 
 
 def interpret_counterfactual(
@@ -176,15 +197,15 @@ def interpret_counterfactual(
         if sample[k] != counterfactual[k]
         and k not in exclude_from_diff
     }
-    
+
     if not diffs:
         return "No meaningful differences found between sample and counterfactual."
-    
+
     changes = ", ".join(
         f"{feature} from {original} to {cf_value}"
         for feature, (original, cf_value) in diffs.items()
     )
-    
+
     if prediction_changed:
         return (
             f"Changing {changes} may result in a different prediction. "
@@ -199,8 +220,8 @@ def interpret_counterfactual(
         )
 
 
-def get_feature_importances(version: int | None = None, ):
-    params = {'version': version} if version else {}
+def get_feature_importances(version: str | None = None):
+    params = {'version': version} if version is not None else {}
     r = get(endpoint='/explain/importance', params=params)
     if r.status_code == 200:
         return r.json()
@@ -209,4 +230,33 @@ def get_feature_importances(version: int | None = None, ):
         r.status_code,
         r.text,
     )
-    return None 
+    return None
+
+
+def list_models() -> list[dict] | None:
+    """Return metadata for all trained surrogate models, newest first."""
+    r = get(endpoint='/surrogate/models', params={})
+    if r.status_code == 200:
+        return r.json()['models']
+    logger.error(
+        "List models failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def delete_model(model_id: str) -> bool:
+    """Delete a surrogate model by its UUID. Returns True on success, False if not found."""
+    r = delete(endpoint=f'/surrogate/models/{model_id}')
+    if r.status_code == 204:
+        return True
+    if r.status_code == 404:
+        logger.warning("Surrogate model %s not found", model_id)
+        return False
+    logger.error(
+        "Delete model failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return False

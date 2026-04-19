@@ -7,10 +7,13 @@ import pytest
 from proxyml.client import (
     _cast_column,
     _headers,
+    delete_model,
     interpret_counterfactual,
+    list_models,
     predict,
     put_schema,
     synthesize_data,
+    train_surrogate,
 )
 
 
@@ -159,9 +162,10 @@ def test_predict_success(mock_post):
 @patch("proxyml.client.post")
 def test_predict_with_version(mock_post):
     mock_post.return_value = _mock_response(200, {"prediction": 0})
-    predict(samples=[1.0, 2.0], version=3)
+    uid = "550e8400-e29b-41d4-a716-446655440000"
+    predict(samples=[1.0, 2.0], version=uid)
     payload = mock_post.call_args.kwargs["payload"]
-    assert payload["version"] == 3
+    assert payload["version"] == uid
 
 
 @patch("proxyml.client.post")
@@ -191,3 +195,60 @@ def test_synthesize_data_failure_returns_none(mock_post):
     mock_post.return_value = _mock_response(500, {})
     result = synthesize_data(num_points=10, sample=None)
     assert result is None
+
+
+@patch("proxyml.client.post")
+def test_train_surrogate_with_metadata(mock_post):
+    mock_post.return_value = _mock_response(200, {
+        "version": "abc-123", "trained_at": "2026-04-19T12:00:00",
+        "task": "regression", "name": "v1", "comments": "test run",
+        "feature_names": None, "metrics": {"r2": 0.95}, "warning": None,
+    })
+    result = train_surrogate(
+        samples=[[1.0, 2.0]], predictions=[3.0],
+        feature_names=None, name="v1", comments="test run",
+    )
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["name"] == "v1"
+    assert payload["comments"] == "test run"
+    assert result["version"] == "abc-123"
+    assert result["trained_at"] == "2026-04-19T12:00:00"
+
+
+@patch("proxyml.client.post")
+def test_train_surrogate_omits_none_metadata(mock_post):
+    mock_post.return_value = _mock_response(200, {"version": "abc-123"})
+    train_surrogate(samples=[[1.0]], predictions=[1.0], feature_names=None)
+    payload = mock_post.call_args.kwargs["payload"]
+    assert "name" not in payload
+    assert "comments" not in payload
+
+
+@patch("proxyml.client.get")
+def test_list_models_success(mock_get):
+    models = [{"version": "abc-123", "task": "regression", "name": "v1",
+               "comments": None, "feature_names": None, "metrics": {"r2": 0.9},
+               "trained_at": "2026-04-19T12:00:00"}]
+    mock_get.return_value = _mock_response(200, {"models": models})
+    result = list_models()
+    assert result == models
+    mock_get.assert_called_once_with(endpoint="/surrogate/models", params={})
+
+
+@patch("proxyml.client.get")
+def test_list_models_failure_returns_none(mock_get):
+    mock_get.return_value = _mock_response(401, {"detail": "unauthorized"})
+    assert list_models() is None
+
+
+@patch("proxyml.client.delete")
+def test_delete_model_success(mock_delete):
+    mock_delete.return_value = _mock_response(204, None)
+    assert delete_model("abc-123") is True
+    mock_delete.assert_called_once_with(endpoint="/surrogate/models/abc-123")
+
+
+@patch("proxyml.client.delete")
+def test_delete_model_not_found(mock_delete):
+    mock_delete.return_value = _mock_response(404, {"detail": "not found"})
+    assert delete_model("no-such-id") is False

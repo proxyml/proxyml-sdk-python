@@ -73,7 +73,8 @@ result = train_surrogate(
     task="auto",       # "auto", "classification", or "regression"
     test_size=0.2,
 )
-print(result)  # accuracy, version number, etc.
+print(result)  # version UUID, metrics, etc.
+version = result["version"]
 ```
 
 ## Step 4 — Find a Counterfactual
@@ -115,9 +116,90 @@ if cf_df is not None:
 ```python
 from proxyml import predict
 
-results = predict(samples=[sample], version=None)
-print(results)
+result = predict(samples=sample, version=None)
+print(result)  # {"prediction": 1, "model_version": "surrogate-<uuid>-classification"}
 ```
+
+---
+
+## Batch Operations
+
+For large workloads, use batch endpoints to make a single API call instead of one per instance.
+
+### Batch Predictions
+
+```python
+from proxyml import predict_batch
+
+instances = df.values.tolist()  # multiple rows
+result = predict_batch(instances=instances)
+print(result["predictions"])    # one prediction per row
+```
+
+### Batch Counterfactuals
+
+```python
+from proxyml import find_counterfactuals
+
+samples = df.iloc[:10].values.tolist()
+results = find_counterfactuals(instances=samples, target=1)
+
+# results is a list — one DataFrame (or None) per input instance
+for i, cf in enumerate(results):
+    if cf is not None:
+        print(f"Instance {i}: {cf.iloc[0].to_dict()}")
+    else:
+        print(f"Instance {i}: no counterfactual found")
+```
+
+---
+
+## Model Management & Inspection
+
+### Inspect a Model
+
+`get_model_summary` returns feature importances, fidelity metrics, and metadata in one call:
+
+```python
+from proxyml import get_model_summary
+
+summary = get_model_summary()          # latest version
+print(summary["metrics"])              # e.g. {"r2": 0.92}
+print(summary["feature_importances"]) # ranked by impact
+```
+
+### Compare Two Versions
+
+After retraining on updated data, use `diff_models` to see what changed:
+
+```python
+from proxyml import diff_models
+
+diff = diff_models(version_a="<old-uuid>", version_b="<new-uuid>")
+
+print(diff["metric_diff"])  # {"r2": {"a": 0.87, "b": 0.92, "delta": 0.05}}
+
+for entry in diff["coefficient_diff"]:
+    print(f"{entry['feature']}: {entry['a']:.3f} → {entry['b']:.3f} (Δ {entry['delta']:+.3f})")
+
+print("Added features:", diff["features_added"])
+print("Removed features:", diff["features_removed"])
+```
+
+### List and Delete Models
+
+```python
+from proxyml import list_models, delete_model
+
+models = list_models()
+for m in models:
+    print(m["version"], m["task"], m["metrics"], m["trained_at"])
+
+# Delete a specific version
+delete_model("<uuid>")
+```
+
+---
 
 ## Next Steps
 

@@ -8,9 +8,13 @@ from proxyml.client import (
     _cast_column,
     _headers,
     delete_model,
+    diff_models,
+    find_counterfactuals,
+    get_model_summary,
     interpret_counterfactual,
     list_models,
     predict,
+    predict_batch,
     put_schema,
     synthesize_data,
     train_surrogate,
@@ -252,3 +256,167 @@ def test_delete_model_success(mock_delete):
 def test_delete_model_not_found(mock_delete):
     mock_delete.return_value = _mock_response(404, {"detail": "not found"})
     assert delete_model("no-such-id") is False
+
+
+# ---------------------------------------------------------------------------
+# predict_batch
+# ---------------------------------------------------------------------------
+
+@patch("proxyml.client.post")
+def test_predict_batch_success(mock_post):
+    mock_post.return_value = _mock_response(200, {
+        "predictions": [0.74, 0.31],
+        "model_version": "surrogate-abc-regression",
+    })
+    result = predict_batch(instances=[[1.0, 2.0], [3.0, 4.0]])
+    assert result["predictions"] == [0.74, 0.31]
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["inputs"] == [[1.0, 2.0], [3.0, 4.0]]
+    assert "version" not in payload
+
+
+@patch("proxyml.client.post")
+def test_predict_batch_with_version(mock_post):
+    mock_post.return_value = _mock_response(200, {"predictions": [1], "model_version": "surrogate-abc-classification"})
+    uid = "550e8400-e29b-41d4-a716-446655440000"
+    predict_batch(instances=[[1.0]], version=uid)
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["version"] == uid
+
+
+@patch("proxyml.client.post")
+def test_predict_batch_failure_returns_none(mock_post):
+    mock_post.return_value = _mock_response(422, {"detail": "bad input"})
+    assert predict_batch(instances=[[1.0, 2.0]]) is None
+
+
+# ---------------------------------------------------------------------------
+# find_counterfactuals
+# ---------------------------------------------------------------------------
+
+_BATCH_CF_RESPONSE = {
+    "results": [
+        {"counterfactual": [1.5, "yes"], "outlier_score": 0.1, "warning": None},
+        {"counterfactual": None, "outlier_score": 0.9, "warning": "no CF found"},
+    ],
+    "feature_names": ["f_cont", "f_cat"],
+    "feature_types": ["continuous", "categorical"],
+    "task": "classification",
+    "target_label": "high",
+    "model_version": "surrogate-abc-classification",
+}
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactuals_as_df(mock_post):
+    mock_post.return_value = _mock_response(200, _BATCH_CF_RESPONSE)
+    results = find_counterfactuals(instances=[[1.0, "no"], [2.0, "no"]], target="high")
+    assert len(results) == 2
+    assert isinstance(results[0], pd.DataFrame)
+    assert results[0]["f_cont"].iloc[0] == 1.5
+    assert results[1] is None  # no counterfactual for second instance
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactuals_raw(mock_post):
+    mock_post.return_value = _mock_response(200, _BATCH_CF_RESPONSE)
+    result = find_counterfactuals(instances=[[1.0, "no"]], target="high", as_df=False)
+    assert result == _BATCH_CF_RESPONSE
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactuals_payload(mock_post):
+    mock_post.return_value = _mock_response(200, _BATCH_CF_RESPONSE)
+    uid = "550e8400-e29b-41d4-a716-446655440000"
+    find_counterfactuals(
+        instances=[[1.0, "no"]], target="high",
+        n_neighbors=500, perturbation_scale=0.2, version=uid, as_df=False,
+    )
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["instances"] == [[1.0, "no"]]
+    assert payload["target_label"] == "high"
+    assert payload["n_neighbors"] == 500
+    assert payload["perturbation_scale"] == 0.2
+    assert payload["version"] == uid
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactuals_failure_returns_none(mock_post):
+    mock_post.return_value = _mock_response(404, {"detail": "no surrogate"})
+    assert find_counterfactuals(instances=[[1.0]], target="high") is None
+
+
+# ---------------------------------------------------------------------------
+# get_model_summary
+# ---------------------------------------------------------------------------
+
+_SUMMARY_RESPONSE = {
+    "model_version": "abc-123",
+    "task": "regression",
+    "trained_at": "2026-04-20T10:00:00",
+    "name": "v2",
+    "comments": None,
+    "feature_names": ["MedInc", "Latitude"],
+    "metrics": {"r2": 0.92},
+    "feature_importances": [
+        {"feature": "MedInc", "coefficient": 0.82, "abs_coefficient": 0.82},
+        {"feature": "Latitude", "coefficient": -0.61, "abs_coefficient": 0.61},
+    ],
+    "per_class_importances": None,
+    "note": "Coefficients are in the scaled feature space.",
+}
+
+
+@patch("proxyml.client.get")
+def test_get_model_summary_success(mock_get):
+    mock_get.return_value = _mock_response(200, _SUMMARY_RESPONSE)
+    result = get_model_summary()
+    assert result == _SUMMARY_RESPONSE
+    mock_get.assert_called_once_with(endpoint="/explain/summary", params={})
+
+
+@patch("proxyml.client.get")
+def test_get_model_summary_with_version(mock_get):
+    mock_get.return_value = _mock_response(200, _SUMMARY_RESPONSE)
+    get_model_summary(version="abc-123")
+    mock_get.assert_called_once_with(endpoint="/explain/summary", params={"version": "abc-123"})
+
+
+@patch("proxyml.client.get")
+def test_get_model_summary_failure_returns_none(mock_get):
+    mock_get.return_value = _mock_response(404, {"detail": "not found"})
+    assert get_model_summary() is None
+
+
+# ---------------------------------------------------------------------------
+# diff_models
+# ---------------------------------------------------------------------------
+
+_DIFF_RESPONSE = {
+    "version_a": "aaa-111",
+    "version_b": "bbb-222",
+    "task": "regression",
+    "metric_diff": {"r2": {"a": 0.87, "b": 0.92, "delta": 0.05}},
+    "coefficient_diff": [
+        {"feature": "MedInc", "a": 0.82, "b": 0.76, "delta": -0.06},
+    ],
+    "features_added": [],
+    "features_removed": ["Population"],
+}
+
+
+@patch("proxyml.client.get")
+def test_diff_models_success(mock_get):
+    mock_get.return_value = _mock_response(200, _DIFF_RESPONSE)
+    result = diff_models(version_a="aaa-111", version_b="bbb-222")
+    assert result == _DIFF_RESPONSE
+    mock_get.assert_called_once_with(
+        endpoint="/explain/diff",
+        params={"version_a": "aaa-111", "version_b": "bbb-222"},
+    )
+
+
+@patch("proxyml.client.get")
+def test_diff_models_failure_returns_none(mock_get):
+    mock_get.return_value = _mock_response(422, {"detail": "different tasks"})
+    assert diff_models(version_a="aaa-111", version_b="bbb-222") is None

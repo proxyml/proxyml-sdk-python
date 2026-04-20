@@ -220,6 +220,89 @@ def interpret_counterfactual(
         )
 
 
+def predict_batch(instances: list[list], version: str | None = None):
+    payload = {'inputs': instances}
+    if version is not None:
+        payload['version'] = version
+    r = post(endpoint='/surrogate/predict/batch', payload=payload)
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Batch prediction failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def find_counterfactuals(
+    instances: list[list],
+    target,
+    n_neighbors: int = 10000,
+    perturbation_scale: float = 0.1,
+    version: str | None = None,
+    as_df: bool = True,
+):
+    payload = {
+        'instances': instances,
+        'target_label': target.item() if hasattr(target, 'item') else target,
+        'n_neighbors': n_neighbors,
+        'perturbation_scale': perturbation_scale,
+    }
+    if version is not None:
+        payload['version'] = version
+    r = post(endpoint='/explain/counterfactual/batch', payload=payload)
+    if r.status_code == 200:
+        data = r.json()
+        if as_df:
+            feature_names = data['feature_names']
+            feature_types = data['feature_types']
+            results = []
+            for item in data['results']:
+                if item['counterfactual'] is None:
+                    if item.get('warning'):
+                        print(f"No counterfactual found: {item['warning']}")
+                    results.append(None)
+                else:
+                    df = pd.DataFrame([item['counterfactual']], columns=feature_names)
+                    for col, ftype in zip(feature_names, feature_types):
+                        df[col] = _cast_column(df[col], ftype)
+                    results.append(df)
+            return results
+        return data
+    logger.error(
+        "Batch counterfactual failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def get_model_summary(version: str | None = None):
+    params = {'version': version} if version is not None else {}
+    r = get(endpoint='/explain/summary', params=params)
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Model summary failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def diff_models(version_a: str, version_b: str):
+    r = get(endpoint='/explain/diff', params={'version_a': version_a, 'version_b': version_b})
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Model diff failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
 def get_feature_importances(version: str | None = None):
     params = {'version': version} if version is not None else {}
     r = get(endpoint='/explain/importance', params=params)

@@ -71,7 +71,7 @@ for cls in importances["per_class_importances"]:
 # 6. Query the surrogate
 # ---------------------------------------------------------------------------
 sample = df.iloc[0].tolist()
-pred_result = proxyml.predict(samples=sample, version=None)
+pred_result = proxyml.predict(sample=sample, version=None)
 print("\nSample 0 classification:", y[0])
 print("\nLocal prediction for sample 0:", black_box.predict_proba([sample])[0])
 print("\nSurrogate prediction for sample 0:", pred_result)

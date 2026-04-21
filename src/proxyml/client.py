@@ -139,8 +139,8 @@ def train_surrogate(
     return None
 
 
-def predict(samples: list, version: str | None = None):
-    payload = {'inputs': samples}
+def predict(sample: list, version: str | None = None):
+    payload = {'inputs': sample}
     if version is not None:
         payload['version'] = version
     r = post(endpoint='/surrogate/predict', payload=payload)
@@ -220,8 +220,8 @@ def interpret_counterfactual(
         )
 
 
-def predict_batch(instances: list[list], version: str | None = None):
-    payload = {'inputs': instances}
+def predict_batch(samples: list[list], version: str | None = None):
+    payload = {'inputs': samples}
     if version is not None:
         payload['version'] = version
     r = post(endpoint='/surrogate/predict/batch', payload=payload)
@@ -236,15 +236,15 @@ def predict_batch(instances: list[list], version: str | None = None):
 
 
 def find_counterfactuals(
-    instances: list[list],
+    samples: list[list],
     target,
     n_neighbors: int = 10000,
     perturbation_scale: float = 0.1,
     version: str | None = None,
-    as_df: bool = True,
+    as_dfs: bool = True,
 ):
     payload = {
-        'instances': instances,
+        'instances': samples,
         'target_label': target.item() if hasattr(target, 'item') else target,
         'n_neighbors': n_neighbors,
         'perturbation_scale': perturbation_scale,
@@ -254,7 +254,7 @@ def find_counterfactuals(
     r = post(endpoint='/explain/counterfactual/batch', payload=payload)
     if r.status_code == 200:
         data = r.json()
-        if as_df:
+        if as_dfs:
             feature_names = data['feature_names']
             feature_types = data['feature_types']
             results = []

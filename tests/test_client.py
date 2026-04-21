@@ -156,7 +156,7 @@ def test_put_schema_failure(mock_put):
 @patch("proxyml.client.post")
 def test_predict_success(mock_post):
     mock_post.return_value = _mock_response(200, {"prediction": 1, "probability": 0.9})
-    result = predict(samples=[1.0, 2.0, 3.0], version=None)
+    result = predict(sample=[1.0, 2.0, 3.0], version=None)
     assert result == {"prediction": 1, "probability": 0.9}
     payload = mock_post.call_args.kwargs["payload"]
     assert payload["inputs"] == [1.0, 2.0, 3.0]
@@ -167,7 +167,7 @@ def test_predict_success(mock_post):
 def test_predict_with_version(mock_post):
     mock_post.return_value = _mock_response(200, {"prediction": 0})
     uid = "550e8400-e29b-41d4-a716-446655440000"
-    predict(samples=[1.0, 2.0], version=uid)
+    predict(sample=[1.0, 2.0], version=uid)
     payload = mock_post.call_args.kwargs["payload"]
     assert payload["version"] == uid
 
@@ -175,7 +175,7 @@ def test_predict_with_version(mock_post):
 @patch("proxyml.client.post")
 def test_predict_failure_returns_none(mock_post):
     mock_post.return_value = _mock_response(422, {"detail": "bad input"})
-    result = predict(samples=[1.0, 2.0], version=None)
+    result = predict(sample=[1.0, 2.0], version=None)
     assert result is None
 
 
@@ -268,7 +268,7 @@ def test_predict_batch_success(mock_post):
         "predictions": [0.74, 0.31],
         "model_version": "surrogate-abc-regression",
     })
-    result = predict_batch(instances=[[1.0, 2.0], [3.0, 4.0]])
+    result = predict_batch(samples=[[1.0, 2.0], [3.0, 4.0]])
     assert result["predictions"] == [0.74, 0.31]
     payload = mock_post.call_args.kwargs["payload"]
     assert payload["inputs"] == [[1.0, 2.0], [3.0, 4.0]]
@@ -279,7 +279,7 @@ def test_predict_batch_success(mock_post):
 def test_predict_batch_with_version(mock_post):
     mock_post.return_value = _mock_response(200, {"predictions": [1], "model_version": "surrogate-abc-classification"})
     uid = "550e8400-e29b-41d4-a716-446655440000"
-    predict_batch(instances=[[1.0]], version=uid)
+    predict_batch(samples=[[1.0]], version=uid)
     payload = mock_post.call_args.kwargs["payload"]
     assert payload["version"] == uid
 
@@ -287,7 +287,7 @@ def test_predict_batch_with_version(mock_post):
 @patch("proxyml.client.post")
 def test_predict_batch_failure_returns_none(mock_post):
     mock_post.return_value = _mock_response(422, {"detail": "bad input"})
-    assert predict_batch(instances=[[1.0, 2.0]]) is None
+    assert predict_batch(samples=[[1.0, 2.0]]) is None
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +310,7 @@ _BATCH_CF_RESPONSE = {
 @patch("proxyml.client.post")
 def test_find_counterfactuals_as_df(mock_post):
     mock_post.return_value = _mock_response(200, _BATCH_CF_RESPONSE)
-    results = find_counterfactuals(instances=[[1.0, "no"], [2.0, "no"]], target="high")
+    results = find_counterfactuals(samples=[[1.0, "no"], [2.0, "no"]], target="high")
     assert len(results) == 2
     assert isinstance(results[0], pd.DataFrame)
     assert results[0]["f_cont"].iloc[0] == 1.5
@@ -320,7 +320,7 @@ def test_find_counterfactuals_as_df(mock_post):
 @patch("proxyml.client.post")
 def test_find_counterfactuals_raw(mock_post):
     mock_post.return_value = _mock_response(200, _BATCH_CF_RESPONSE)
-    result = find_counterfactuals(instances=[[1.0, "no"]], target="high", as_df=False)
+    result = find_counterfactuals(samples=[[1.0, "no"]], target="high", as_dfs=False)
     assert result == _BATCH_CF_RESPONSE
 
 
@@ -329,8 +329,8 @@ def test_find_counterfactuals_payload(mock_post):
     mock_post.return_value = _mock_response(200, _BATCH_CF_RESPONSE)
     uid = "550e8400-e29b-41d4-a716-446655440000"
     find_counterfactuals(
-        instances=[[1.0, "no"]], target="high",
-        n_neighbors=500, perturbation_scale=0.2, version=uid, as_df=False,
+        samples=[[1.0, "no"]], target="high",
+        n_neighbors=500, perturbation_scale=0.2, version=uid, as_dfs=False,
     )
     payload = mock_post.call_args.kwargs["payload"]
     assert payload["instances"] == [[1.0, "no"]]
@@ -343,7 +343,7 @@ def test_find_counterfactuals_payload(mock_post):
 @patch("proxyml.client.post")
 def test_find_counterfactuals_failure_returns_none(mock_post):
     mock_post.return_value = _mock_response(404, {"detail": "no surrogate"})
-    assert find_counterfactuals(instances=[[1.0]], target="high") is None
+    assert find_counterfactuals(samples=[[1.0]], target="high") is None
 
 
 # ---------------------------------------------------------------------------

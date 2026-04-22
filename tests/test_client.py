@@ -11,11 +11,13 @@ from proxyml.client import (
     diff_models,
     find_counterfactuals,
     get_model_summary,
+    get_usage,
     interpret_counterfactual,
     list_models,
     predict,
     predict_batch,
     put_schema,
+    rotate_key,
     synthesize_data,
     train_surrogate,
 )
@@ -420,3 +422,50 @@ def test_diff_models_success(mock_get):
 def test_diff_models_failure_returns_none(mock_get):
     mock_get.return_value = _mock_response(422, {"detail": "different tasks"})
     assert diff_models(version_a="aaa-111", version_b="bbb-222") is None
+
+
+# ---------------------------------------------------------------------------
+# get_usage
+# ---------------------------------------------------------------------------
+
+_USAGE_RESPONSE = {
+    "tier": "hobbyist",
+    "period": "2026-04",
+    "calls_this_period": 42,
+    "calls_limit": 1000,
+    "calls_remaining": 958,
+    "surrogates_trained": 2,
+    "surrogate_limit": 3,
+}
+
+
+@patch("proxyml.client.get")
+def test_get_usage_success(mock_get):
+    mock_get.return_value = _mock_response(200, _USAGE_RESPONSE)
+    result = get_usage()
+    assert result == _USAGE_RESPONSE
+    mock_get.assert_called_once_with(endpoint="/account/usage", params={})
+
+
+@patch("proxyml.client.get")
+def test_get_usage_failure_returns_none(mock_get):
+    mock_get.return_value = _mock_response(401, {"detail": "unauthorized"})
+    assert get_usage() is None
+
+
+# ---------------------------------------------------------------------------
+# rotate_key
+# ---------------------------------------------------------------------------
+
+@patch("proxyml.client.post")
+def test_rotate_key_success(mock_post):
+    mock_post.return_value = _mock_response(201, {"api_key": "proxyml_new_secret_key"})
+    result = rotate_key()
+    assert result == "proxyml_new_secret_key"
+    mock_post.assert_called_once_with(endpoint="/account/keys/rotate", payload={})
+
+
+@patch("proxyml.client.post")
+def test_rotate_key_failure_returns_none(mock_post):
+    mock_post.return_value = _mock_response(403, {"detail": "Key rotation is not available for test accounts"})
+    assert rotate_key() is None

@@ -316,6 +316,32 @@ def get_feature_importances(version: str | None = None):
     return None
 
 
+def get_usage() -> dict | None:
+    """Return current tier, usage counts, and quota for the authenticated user."""
+    r = get(endpoint='/account/usage', params={})
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Get usage failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def rotate_key() -> str | None:
+    """Rotate the API key, revoking all old keys. Returns the new key string or None on failure."""
+    r = post(endpoint='/account/keys/rotate', payload={})
+    if r.status_code == 201:
+        return r.json()['api_key']
+    logger.error(
+        "Key rotation failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
 def list_models() -> list[dict] | None:
     """Return metadata for all trained surrogate models, newest first."""
     r = get(endpoint='/surrogate/models', params={})

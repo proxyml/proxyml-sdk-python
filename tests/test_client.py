@@ -8,12 +8,15 @@ from proxyml.client import (
     _cast_column,
     _headers,
     delete_model,
+    delete_schema,
     diff_models,
+    fetch_schema,
     find_counterfactuals,
     get_model_summary,
     get_usage,
     interpret_counterfactual,
     list_models,
+    list_schemas,
     predict,
     predict_batch,
     put_schema,
@@ -141,11 +144,18 @@ def _mock_response(status_code, json_body):
 
 
 @patch("proxyml.client.put")
-def test_put_schema_success(mock_put):
-    mock_put.return_value = _mock_response(200, {"status": "ok"})
+def test_put_schema_default(mock_put):
+    mock_put.return_value = _mock_response(200, {"features": []})
     result = put_schema({"features": []})
-    assert result == {"status": "ok"}
-    mock_put.assert_called_once_with(endpoint="/schema", payload={"features": []})
+    assert result == {"features": []}
+    mock_put.assert_called_once_with(endpoint="/schema/default", payload={"features": []})
+
+
+@patch("proxyml.client.put")
+def test_put_schema_named(mock_put):
+    mock_put.return_value = _mock_response(200, {"features": []})
+    put_schema({"features": []}, name="credit")
+    mock_put.assert_called_once_with(endpoint="/schema/credit", payload={"features": []})
 
 
 @patch("proxyml.client.put")
@@ -153,6 +163,60 @@ def test_put_schema_failure(mock_put):
     mock_put.return_value = _mock_response(422, {"detail": "invalid"})
     result = put_schema({"features": []})
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# fetch_schema / list_schemas / delete_schema
+# ---------------------------------------------------------------------------
+
+@patch("proxyml.client.get")
+def test_fetch_schema_default(mock_get):
+    mock_get.return_value = _mock_response(200, {"features": [{"type": "continuous", "name": "age"}]})
+    result = fetch_schema()
+    assert result["features"][0]["name"] == "age"
+    mock_get.assert_called_once_with(endpoint="/schema/default", params={})
+
+
+@patch("proxyml.client.get")
+def test_fetch_schema_named(mock_get):
+    mock_get.return_value = _mock_response(200, {"features": []})
+    fetch_schema(name="credit")
+    mock_get.assert_called_once_with(endpoint="/schema/credit", params={})
+
+
+@patch("proxyml.client.get")
+def test_fetch_schema_not_found_returns_none(mock_get):
+    mock_get.return_value = _mock_response(404, {"detail": "not found"})
+    assert fetch_schema("missing") is None
+
+
+@patch("proxyml.client.get")
+def test_list_schemas_success(mock_get):
+    schemas = [{"name": "default", "updated_at": "2026-04-22T10:00:00"},
+               {"name": "credit", "updated_at": "2026-04-22T11:00:00"}]
+    mock_get.return_value = _mock_response(200, {"schemas": schemas})
+    result = list_schemas()
+    assert result == schemas
+    mock_get.assert_called_once_with(endpoint="/schemas", params={})
+
+
+@patch("proxyml.client.get")
+def test_list_schemas_failure_returns_none(mock_get):
+    mock_get.return_value = _mock_response(401, {"detail": "unauthorized"})
+    assert list_schemas() is None
+
+
+@patch("proxyml.client.delete")
+def test_delete_schema_success(mock_del):
+    mock_del.return_value = _mock_response(204, None)
+    assert delete_schema("credit") is True
+    mock_del.assert_called_once_with(endpoint="/schema/credit")
+
+
+@patch("proxyml.client.delete")
+def test_delete_schema_not_found(mock_del):
+    mock_del.return_value = _mock_response(404, {"detail": "not found"})
+    assert delete_schema("no-such-schema") is False
 
 
 @patch("proxyml.client.post")
@@ -191,9 +255,19 @@ def test_synthesize_data_no_sample(mock_post):
     df = synthesize_data(num_points=2, sample=None)
     assert isinstance(df, pd.DataFrame)
     assert list(df.columns) == ["f_cont", "f_cat"]
-    mock_post.assert_called_once_with(
-        endpoint="/synthesize/neighbors", payload={"n": 2}
-    )
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["n"] == 2
+    assert payload["schema_name"] == "default"
+
+
+@patch("proxyml.client.post")
+def test_synthesize_data_named_schema(mock_post):
+    mock_post.return_value = _mock_response(200, {
+        "samples": [[1.0]], "feature_names": ["x"], "feature_types": ["continuous"],
+    })
+    synthesize_data(num_points=1, schema_name="credit")
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["schema_name"] == "credit"
 
 
 @patch("proxyml.client.post")
@@ -217,8 +291,17 @@ def test_train_surrogate_with_metadata(mock_post):
     payload = mock_post.call_args.kwargs["payload"]
     assert payload["name"] == "v1"
     assert payload["comments"] == "test run"
+    assert payload["schema_name"] == "default"
     assert result["version"] == "abc-123"
     assert result["trained_at"] == "2026-04-19T12:00:00"
+
+
+@patch("proxyml.client.post")
+def test_train_surrogate_named_schema(mock_post):
+    mock_post.return_value = _mock_response(200, {"version": "abc-123"})
+    train_surrogate(samples=[[1.0]], predictions=[1.0], feature_names=None, schema_name="credit")
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["schema_name"] == "credit"
 
 
 @patch("proxyml.client.post")

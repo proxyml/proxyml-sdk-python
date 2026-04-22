@@ -1,5 +1,8 @@
 from proxyml.client import (
     put_schema,
+    fetch_schema,
+    list_schemas,
+    delete_schema,
     synthesize_data,
     train_surrogate,
     predict,
@@ -24,6 +27,9 @@ from proxyml.schema import (
 
 __all__ = [
     "put_schema",
+    "fetch_schema",
+    "list_schemas",
+    "delete_schema",
     "synthesize_data",
     "train_surrogate",
     "predict",

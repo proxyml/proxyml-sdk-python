@@ -61,10 +61,10 @@ def delete(endpoint: str) -> requests.models.Response:
     return r
 
 
-def put_schema(schema: dict):
-    r = put(endpoint='/schema', payload=schema)
+def put_schema(schema: dict, name: str = "default"):
+    r = put(endpoint=f'/schema/{name}', payload=schema)
     if r.status_code == 200:
-        logger.info("Schema uploaded successfully")
+        logger.info("Schema '%s' uploaded successfully", name)
         return r.json()
     logger.error(
         "Schema upload failed with status %s: %s",
@@ -72,6 +72,48 @@ def put_schema(schema: dict):
         r.text
     )
     return None
+
+
+def fetch_schema(name: str = "default") -> dict | None:
+    """Retrieve a stored feature schema by name."""
+    r = get(endpoint=f'/schema/{name}', params={})
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Fetch schema failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def list_schemas() -> list[dict] | None:
+    """Return all named schemas for the authenticated user."""
+    r = get(endpoint='/schemas', params={})
+    if r.status_code == 200:
+        return r.json()['schemas']
+    logger.error(
+        "List schemas failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def delete_schema(name: str) -> bool:
+    """Delete a named schema. Returns True on success, False if not found."""
+    r = delete(endpoint=f'/schema/{name}')
+    if r.status_code == 204:
+        return True
+    if r.status_code == 404:
+        logger.warning("Schema '%s' not found", name)
+        return False
+    logger.error(
+        "Delete schema failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return False
 
 
 def _cast_column(series: pd.Series, ftype: str) -> pd.Series:
@@ -87,11 +129,11 @@ def _cast_column(series: pd.Series, ftype: str) -> pd.Series:
     return series
 
 
-def synthesize_data(num_points: int = 100, sample: list | None = None, as_df: bool = True):
+def synthesize_data(num_points: int = 100, sample: list | None = None, as_df: bool = True, schema_name: str = "default"):
     if sample is None:
-        r = post(endpoint='/synthesize/neighbors', payload={'n': num_points})
+        r = post(endpoint='/synthesize/neighbors', payload={'n': num_points, 'schema_name': schema_name})
     else:
-        r = post(endpoint='/synthesize/blended', payload={'n': num_points, 'instance': [col.item() for col in sample]})
+        r = post(endpoint='/synthesize/blended', payload={'n': num_points, 'instance': [col.item() for col in sample], 'schema_name': schema_name})
     if r.status_code == 200:
         payload = r.json()
         if as_df:
@@ -114,6 +156,7 @@ def train_surrogate(
         feature_names: list[str] | None,
         task: str = 'auto',
         test_size: float = 0.2,
+        schema_name: str = "default",
         name: str | None = None,
         comments: str | None = None,
     ):
@@ -123,6 +166,7 @@ def train_surrogate(
         'feature_names': feature_names,
         'task': task,
         'test_size': test_size,
+        'schema_name': schema_name,
     }
     if name is not None:
         payload['name'] = name

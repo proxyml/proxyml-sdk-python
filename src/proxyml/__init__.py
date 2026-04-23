@@ -17,6 +17,7 @@ from proxyml.client import (
     delete_model,
     get_usage,
     rotate_key,
+    explain_local,
 )
 from proxyml.schema import (
     get_schema,
@@ -44,6 +45,7 @@ __all__ = [
     "delete_model",
     "get_usage",
     "rotate_key",
+    "explain_local",
     "get_schema",
     "gen_continuous_schema",
     "gen_categorical_schema",

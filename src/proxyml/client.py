@@ -399,6 +399,27 @@ def list_models() -> list[dict] | None:
     return None
 
 
+def explain_local(instance: list, version: str | None = None) -> dict | None:
+    """Per-feature contribution breakdown for a single instance.
+
+    Returns a dict with ``prediction``, ``feature_contributions`` (sorted by
+    abs_contribution descending), ``intercept``, optional ``probabilities``
+    (classification), and optional ``per_class_contributions`` (multiclass).
+    """
+    payload: dict = {"instance": instance}
+    if version is not None:
+        payload["version"] = version
+    r = post(endpoint="/explain/local", payload=payload)
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Local explanation failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
 def delete_model(model_id: str) -> bool:
     """Delete a surrogate model by its UUID. Returns True on success, False if not found."""
     r = delete(endpoint=f'/surrogate/models/{model_id}')

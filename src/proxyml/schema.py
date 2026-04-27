@@ -8,6 +8,15 @@ from pandas.api.types import is_float_dtype, is_integer_dtype
 
 
 def gen_continuous_schema(s: pd.Series, name: str | None = None) -> dict:
+    """
+    Generates a schema entry for continuous data.
+
+    Args:
+        s (pandas Series): data to characterize
+        name (str): optional name for the entry, defaults to s.name.
+    Returns:
+        schema dict
+    """
     return {
         'type': 'continuous',
         'name': name or s.name,
@@ -19,6 +28,15 @@ def gen_continuous_schema(s: pd.Series, name: str | None = None) -> dict:
 
 
 def gen_categorical_schema(s: pd.Series, name: str | None = None) -> dict:
+    """
+    Generates a schema entry for categorical data.
+
+    Args:
+        s (pandas Series): data to characterize
+        name (str): optional name for the entry, defaults to s.name.
+    Returns:
+        schema dict
+    """
     counts = s.value_counts(normalize=True)                                                                                                                                         
     return {                                        
         'type': 'categorical',
@@ -28,6 +46,15 @@ def gen_categorical_schema(s: pd.Series, name: str | None = None) -> dict:
 
 
 def gen_discrete_schema(s: pd.Series, name: str | None = None) -> dict:
+    """
+    Generates a schema entry for discrete data.
+
+    Args:
+        s (pandas Series): data to characterize
+        name (str): optional name for the entry, defaults to s.name.
+    Returns:
+        schema dict
+    """
     return {                                        
         'type': 'count',
         'name': name or s.name,    
@@ -37,6 +64,15 @@ def gen_discrete_schema(s: pd.Series, name: str | None = None) -> dict:
 
 
 def get_schema(df: pd.DataFrame, immutable_cols: list[str] | None) -> dict:
+    """
+    Generates a data schema for a pandas DataFrame, based on the data types of the columns.
+
+    Args:
+        df (pandas DataFrame): data to characterize
+        immutable_cols (list): list of columns to consider immutable. These columns will have schema entries, but the surrogate will _not_ use them for inference.
+    Returns:
+        data schema as dict. Review and adjust as needed.
+    """
     schema = {
         'features': list(),
         '_note': (

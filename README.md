@@ -5,6 +5,8 @@ Python SDK for the [ProxyML API](https://proxyml.ai).
 > **Status:** Early access — server endpoints coming soon.  
 > [Request early access](mailto:contact@proxyml.ai) or star this repo to follow progress.
 
+<img width="577" height="115" alt="creditg_car_counterfactual" src="https://github.com/user-attachments/assets/8f913c95-1190-4b3c-ba7d-6690e9ebb3e0" />
+
 ## Why ProxyML?
 
 Most explainability tools require sending your data to a third-party server. 

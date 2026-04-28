@@ -487,6 +487,26 @@ def get_model_summary(version: str | None = None) -> Any:
     return None
 
 
+def get_model_schema(version: str) -> Any:
+    """
+    Retrieves the schema associated with a particular surrogate.
+    
+    Args:
+        version (str): name of the surrogate model.
+    Returns:
+        JSON object representation of the model's schema, or None if an error occurred.
+    """
+    r = get(endpoint=f'/surrogate/models/{version}/schema', params=dict())
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Schema retrieval failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
 def diff_models(version_a: str, version_b: str) -> Any:
     """
     Returns a summary of the differences between two surrogates.  The surrogates must have the same model task (i.e. a classification model can't be compared with a regression model), and they must

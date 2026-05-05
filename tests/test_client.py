@@ -10,6 +10,7 @@ from proxyml.client import (
     delete_model,
     delete_schema,
     diff_models,
+    export_surrogate,
     fetch_schema,
     find_counterfactuals,
     get_model_summary,
@@ -552,3 +553,37 @@ def test_rotate_key_success(mock_post):
 def test_rotate_key_failure_returns_none(mock_post):
     mock_post.return_value = _mock_response(403, {"detail": "Key rotation is not available for test accounts"})
     assert rotate_key() is None
+
+
+# ---------------------------------------------------------------------------
+# export_surrogate
+# ---------------------------------------------------------------------------
+
+_EXPORT_RESPONSE = {
+    "version": "abc-123",
+    "classes": [0, 1],
+    "intercept": [0.5],
+    "per_class_intercepts": None,
+    "features": [{"name": "age", "type": "continuous"}],
+    "scalers": {"age": {"mean": 35.0, "scale": 10.0}},
+}
+
+
+@patch("proxyml.client.get")
+def test_export_surrogate_success(mock_get):
+    mock_get.return_value = _mock_response(200, _EXPORT_RESPONSE)
+    result = export_surrogate(version="abc-123")
+    assert result == _EXPORT_RESPONSE
+
+
+@patch("proxyml.client.get")
+def test_export_surrogate_calls_correct_endpoint(mock_get):
+    mock_get.return_value = _mock_response(200, _EXPORT_RESPONSE)
+    export_surrogate(version="abc-123")
+    mock_get.assert_called_once_with(endpoint="/surrogate/models/abc-123/export", params={})
+
+
+@patch("proxyml.client.get")
+def test_export_surrogate_failure_returns_none(mock_get):
+    mock_get.return_value = _mock_response(404, {"detail": "model not found"})
+    assert export_surrogate(version="no-such-version") is None

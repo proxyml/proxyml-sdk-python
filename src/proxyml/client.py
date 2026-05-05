@@ -270,6 +270,26 @@ def train_surrogate(
     return None
 
 
+def export_surrogate(version: str) -> Any:
+    """
+    Exports a surrogate model to JSON e.g., classes, intercept, per_class_intercepts, features, scalers, etc.; everything required
+    to reconstruct the surrogate.
+    
+    Args:
+        version (str): name of the surrogate to export
+    Returns:
+        JSON object representing the surrogate, or None if an error occurred. 
+    """
+    r = get(endpoint=f'/surrogate/models/{version}/export', params=dict())
+    if r.status_code == 200:
+        return r.json()
+    logger.error(                                                                                                                                                            
+        "Surrogate export failed (version=%s, status=%s): %s",                                                                                                             
+        version, r.status_code, r.text,                                                                                                                                      
+    )
+    return None
+
+
 def predict(sample: list, version: str | None = None) -> Any:
     """
     Calls a surrogate model to make a single prediction.

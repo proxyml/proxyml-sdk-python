@@ -51,7 +51,7 @@ Upload a schema to the ProxyML API.
 
 ## Data Synthesis
 
-### `synthesize_data(num_points=100, sample=None, as_df=True)`
+### `synthesize_data(num_points=100, sample=None, as_df=True, schema_name="default")`
 
 Generate synthetic data points using the uploaded schema.
 
@@ -62,6 +62,7 @@ Generate synthetic data points using the uploaded schema.
 | `num_points` | `int` | Number of data points to generate. |
 | `sample` | `list \| None` | If provided, generates neighbors blended around this instance. If `None`, samples from the global distribution. |
 | `as_df` | `bool` | If `True` (default), returns a typed `pd.DataFrame`. If `False`, returns the raw API response dict. |
+| `schema_name` | `str` | Name of the schema to use. Default `"default"`. |
 
 **Returns** `pd.DataFrame | dict | None`
 
@@ -69,7 +70,7 @@ Generate synthetic data points using the uploaded schema.
 
 ## Surrogate Model
 
-### `train_surrogate(samples, predictions, feature_names, task="auto", test_size=0.2, name=None, comments=None)`
+### `train_surrogate(samples, predictions, feature_names, task="auto", test_size=0.2, schema_name="default", name=None, comments=None)`
 
 Train a surrogate model on scored synthetic data.
 
@@ -82,6 +83,7 @@ Train a surrogate model on scored synthetic data.
 | `feature_names` | `list[str] \| None` | Column names matching the order of features in `samples`. Pass `None` to use all schema features in schema order. |
 | `task` | `str` | `"auto"`, `"classification"`, or `"regression"`. `"auto"` infers from `predictions`. |
 | `test_size` | `float` | Fraction of data held out for evaluation. Default `0.2`. |
+| `schema_name` | `str` | Name of the schema to use. Default `"default"`. |
 | `name` | `str \| None` | Optional human-readable label for this version. |
 | `comments` | `str \| None` | Optional free-text notes stored with the model. |
 
@@ -89,7 +91,7 @@ Train a surrogate model on scored synthetic data.
 
 ---
 
-### `predict(samples, version=None)`
+### `predict(sample, version=None)`
 
 Score a single instance using a trained surrogate model.
 
@@ -97,14 +99,14 @@ Score a single instance using a trained surrogate model.
 
 | Name | Type | Description |
 |---|---|---|
-| `samples` | `list` | A single input feature vector. |
+| `sample` | `list` | A single input feature vector. |
 | `version` | `str \| None` | Surrogate version UUID. `None` uses the latest version. |
 
 **Returns** `dict | None` — API response with `prediction` and `model_version`, or `None` on failure.
 
 ---
 
-### `predict_batch(instances, version=None)`
+### `predict_batch(samples, version=None)`
 
 Score multiple instances in a single API call.
 
@@ -112,13 +114,13 @@ Score multiple instances in a single API call.
 
 | Name | Type | Description |
 |---|---|---|
-| `instances` | `list[list]` | List of input feature vectors (one per row). |
+| `samples` | `list[list]` | List of input feature vectors (one per row). |
 | `version` | `str \| None` | Surrogate version UUID. `None` uses the latest version. |
 
 **Returns** `dict | None` — API response with a `predictions` list (one value per input row) and `model_version`, or `None` on failure.
 
 ```python
-result = predict_batch(instances=[[1.2, 0.5], [3.1, 0.8]])
+result = predict_batch(samples=[[1.2, 0.5], [3.1, 0.8]])
 # {"predictions": [0.74, 0.31], "model_version": "surrogate-<uuid>-regression"}
 ```
 
@@ -165,13 +167,13 @@ Search for a minimal-change counterfactual that achieves a target prediction.
 
 **Returns** `pd.DataFrame | dict | None`
 - `pd.DataFrame` (or `dict`) with the counterfactual instance on success.
-- `None` if no counterfactual was found (prints a warning message) or on API error.
+- `None` if no counterfactual was found (logs a warning) or on API error.
 
 Immutable columns (set in the schema) are excluded from the counterfactual search automatically.
 
 ---
 
-### `find_counterfactuals(instances, target, n_neighbors=10000, perturbation_scale=0.1, version=None, as_df=True)`
+### `find_counterfactuals(samples, target, n_neighbors=10000, perturbation_scale=0.1, version=None, as_dfs=True)`
 
 Search for counterfactuals for multiple instances in a single API call.
 
@@ -179,20 +181,20 @@ Search for counterfactuals for multiple instances in a single API call.
 
 | Name | Type | Description |
 |---|---|---|
-| `instances` | `list[list]` | List of input feature vectors (one per row). |
+| `samples` | `list[list]` | List of input feature vectors (one per row). |
 | `target` | | The desired prediction label or value, applied to all instances. For regression, pass a `float` or `[min, max]` range. |
 | `n_neighbors` | `int` | Number of perturbations per instance. Default `10000`. |
 | `perturbation_scale` | `float` | Controls perturbation range. Default `0.1`. |
 | `version` | `str \| None` | Surrogate version UUID. `None` uses the latest version. |
-| `as_df` | `bool` | If `True` (default), returns a list of results. If `False`, returns the raw API response dict. |
+| `as_dfs` | `bool` | If `True` (default), returns a list of results. If `False`, returns the raw API response dict. |
 
 **Returns** `list[pd.DataFrame | None] | dict | None`
-- With `as_df=True`: a list with one entry per input instance — a typed `pd.DataFrame` if a counterfactual was found, or `None` if not (a warning is printed for each missing result).
-- With `as_df=False`: the raw API response dict.
+- With `as_dfs=True`: a list with one entry per input instance — a typed `pd.DataFrame` if a counterfactual was found, or `None` if not (a warning is logged for each missing result).
+- With `as_dfs=False`: the raw API response dict.
 - `None` on API error.
 
 ```python
-results = find_counterfactuals(instances=[[1.2, 0.5], [3.1, 0.8]], target=1)
+results = find_counterfactuals(samples=[[1.2, 0.5], [3.1, 0.8]], target=1)
 for i, cf in enumerate(results):
     if cf is not None:
         print(f"Instance {i}: {cf.iloc[0].to_dict()}")

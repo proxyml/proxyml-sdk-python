@@ -2,6 +2,7 @@ import logging
 logger = logging.getLogger(__name__)
 from typing import Any
 
+import orjson
 import requests
 import os
 import numpy as np
@@ -43,7 +44,7 @@ def post(endpoint: str, payload: dict) -> requests.models.Response:
     """
     r = requests.post(
         url=f'{PROXYML_BASE_URL}{endpoint}',
-        json=payload,
+        data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
         headers=_headers()
     )
     return r
@@ -62,7 +63,7 @@ def put(endpoint: str, payload: dict) -> requests.models.Response:
     """    
     r = requests.put(
         url=f'{PROXYML_BASE_URL}{endpoint}',
-        json=payload,
+        data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
         headers=_headers()
     )
     return r
@@ -205,7 +206,7 @@ def synthesize_data(num_points: int = 100, sample: list | None = None, as_df: bo
     if sample is None:
         r = post(endpoint='/synthesize/neighbors', payload={'n': num_points, 'schema_name': schema_name})
     else:
-        r = post(endpoint='/synthesize/blended', payload={'n': num_points, 'instance': [col.item() for col in sample], 'schema_name': schema_name})
+        r = post(endpoint='/synthesize/blended', payload={'n': num_points, 'instance': list(sample), 'schema_name': schema_name})
     if r.status_code == 200:
         payload = r.json()
         if as_df:
@@ -331,7 +332,7 @@ def find_counterfactual(sample, target, n_neighbors: int = 10000, perturbation_s
     """
     payload = {
         'instance': sample,
-        'target_label': target.item() if hasattr(target, 'item') else target,
+        'target_label': target,
         'n_neighbors': n_neighbors,
         'perturbation_scale': perturbation_scale,
     }
@@ -361,7 +362,7 @@ def interpret_counterfactual(
     sample: dict,
     counterfactual: dict,
     prediction_changed: bool,
-    exclude_from_diff: list[str] | None
+    exclude_from_diff: list[str] | None = None
 ) -> str:
     """
     Simple string interpretation of a counterfactual result. No API calls are required.
@@ -453,7 +454,7 @@ def find_counterfactuals(
     """    
     payload = {
         'instances': samples,
-        'target_label': target.item() if hasattr(target, 'item') else target,
+        'target_label': target,
         'n_neighbors': n_neighbors,
         'perturbation_scale': perturbation_scale,
     }

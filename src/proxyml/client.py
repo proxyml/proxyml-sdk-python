@@ -10,9 +10,11 @@ import pandas as pd
 from pandas.api.types import is_float_dtype, is_integer_dtype
 
 
-PROXYML_BASE_URL = os.getenv("PROXYML_BASE_URL", "https://api.proxyml.ai/api/v1")
-
 _BOOL_STRINGS = {"true", "false"}
+
+
+def _base_url() -> str:
+    return os.getenv("PROXYML_BASE_URL", "https://api.proxyml.ai/api/v1")
 
 
 def _headers() -> dict:
@@ -43,7 +45,7 @@ def post(endpoint: str, payload: dict) -> requests.models.Response:
         requests Response object.
     """
     r = requests.post(
-        url=f'{PROXYML_BASE_URL}{endpoint}',
+        url=f'{_base_url()}{endpoint}',
         data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
         headers=_headers()
     )
@@ -62,7 +64,7 @@ def put(endpoint: str, payload: dict) -> requests.models.Response:
         requests Response object.
     """    
     r = requests.put(
-        url=f'{PROXYML_BASE_URL}{endpoint}',
+        url=f'{_base_url()}{endpoint}',
         data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
         headers=_headers()
     )
@@ -81,7 +83,7 @@ def get(endpoint: str, params: dict) -> requests.models.Response:
         requests Response object.
     """
     r = requests.get(
-        url=f'{PROXYML_BASE_URL}{endpoint}',
+        url=f'{_base_url()}{endpoint}',
         headers=_headers(),
         params=params
     )
@@ -99,7 +101,7 @@ def delete(endpoint: str) -> requests.models.Response:
         requests Response object.
     """
     r = requests.delete(
-        url=f'{PROXYML_BASE_URL}{endpoint}',
+        url=f'{_base_url()}{endpoint}',
         headers=_headers()
     )
     return r
@@ -187,7 +189,7 @@ def _cast_column(series: pd.Series, ftype: str) -> pd.Series:
         # convert "true"/"false" strings back to booleans when appropriate
         unique = {str(v).lower() for v in series.dropna().unique()}
         if unique <= _BOOL_STRINGS:
-            return series.map({"true": True, "false": False, True: True, False: False})
+            return series.map(lambda v: {"true": True, "false": False}.get(str(v).lower(), v))
     return series
 
 

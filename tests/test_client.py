@@ -6,6 +6,7 @@ import pytest
 
 from proxyml.client import (
     _cast_column,
+    _base_url,
     _headers,
     delete_model,
     delete_schema,
@@ -30,6 +31,16 @@ from proxyml.client import (
 # ---------------------------------------------------------------------------
 # _headers
 # ---------------------------------------------------------------------------
+
+def test_base_url_default(monkeypatch):
+    monkeypatch.delenv("PROXYML_BASE_URL", raising=False)
+    assert _base_url() == "https://api.proxyml.ai/api/v1"
+
+
+def test_base_url_reads_env_at_call_time(monkeypatch):
+    monkeypatch.setenv("PROXYML_BASE_URL", "https://custom.example.com/api/v1")
+    assert _base_url() == "https://custom.example.com/api/v1"
+
 
 def test_headers_raises_without_api_key(monkeypatch):
     monkeypatch.delenv("PROXYML_API_KEY", raising=False)
@@ -68,6 +79,18 @@ def test_cast_column_numeric_ordinal():
 
 def test_cast_column_categorical_bool_strings():
     s = pd.Series(["true", "false", "true"])
+    result = _cast_column(s, "categorical")
+    assert result.tolist() == [True, False, True]
+
+
+def test_cast_column_categorical_bool_strings_capitalized():
+    s = pd.Series(["True", "False", "True"])
+    result = _cast_column(s, "categorical")
+    assert result.tolist() == [True, False, True]
+
+
+def test_cast_column_categorical_python_bools():
+    s = pd.Series([True, False, True])
     result = _cast_column(s, "categorical")
     assert result.tolist() == [True, False, True]
 

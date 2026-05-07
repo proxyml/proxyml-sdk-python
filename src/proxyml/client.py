@@ -342,16 +342,16 @@ def find_counterfactual(sample, target, n_neighbors: int = 10000, perturbation_s
         payload['version'] = version
     r = post(endpoint='/explain/counterfactual', payload=payload)
     if r.status_code == 200:
-        payload = r.json()
+        response = r.json()
         if as_df:
-            if payload['counterfactual'] is None:
-                print(f"No counterfactual found: {payload.get('warning')}")
+            if response['counterfactual'] is None:
+                logger.warning("No counterfactual found: %s", response.get('warning'))
                 return None
-            df = pd.DataFrame([payload['counterfactual']], columns=payload['feature_names'])
-            for col, ftype in zip(payload['feature_names'], payload['feature_types']):
+            df = pd.DataFrame([response['counterfactual']], columns=response['feature_names'])
+            for col, ftype in zip(response['feature_names'], response['feature_types']):
                 df[col] = _cast_column(df[col], ftype)
             return df
-        return payload
+        return response
     logger.error(
         "Counterfactual failed with status %s: %s",
         r.status_code,
@@ -472,7 +472,7 @@ def find_counterfactuals(
             for item in data['results']:
                 if item['counterfactual'] is None:
                     if item.get('warning'):
-                        print(f"No counterfactual found: {item['warning']}")
+                        logger.warning("No counterfactual found: %s", item['warning'])
                     results.append(None)
                 else:
                     df = pd.DataFrame([item['counterfactual']], columns=feature_names)

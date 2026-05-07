@@ -2,9 +2,6 @@
 
 Python SDK for the [ProxyML API](https://proxyml.ai).
 
-> **Status:** Early access — server endpoints coming soon.  
-> [Request early access](mailto:contact@proxyml.ai) or star this repo to follow progress.
-
 <img width="577" height="115" alt="creditg_car_counterfactual" src="https://github.com/user-attachments/assets/8f913c95-1190-4b3c-ba7d-6690e9ebb3e0" />
 
 ## Why ProxyML?
@@ -97,7 +94,7 @@ See [`docs/quickstart.md`](docs/quickstart.md) for a full walkthrough and [`docs
 | `put_schema(schema)` | Upload a schema to the API |
 | `synthesize_data(num_points, sample, as_df)` | Generate synthetic data points |
 | `train_surrogate(samples, predictions, feature_names, task, test_size)` | Train a surrogate model |
-| `predict(samples, version)` | Score samples with the surrogate model |
+| `predict(sample, version)` | Score a single sample with the surrogate model |
 | `find_counterfactual(sample, target, ...)` | Find a counterfactual for a given sample |
 | `interpret_counterfactual(sample, counterfactual, ...)` | Generate a human-readable explanation |
 

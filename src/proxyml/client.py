@@ -90,6 +90,25 @@ def get(endpoint: str, params: dict) -> requests.models.Response:
     return r
 
 
+def patch(endpoint: str, payload: dict) -> requests.models.Response:
+    """
+    PATCHes a request to a ProxyML API endpoint.
+
+    Args:
+        endpoint (str): ProxyML API endpoint.
+        payload (dict): JSON payload to PATCH.
+
+    Returns:
+        requests Response object.
+    """
+    r = requests.patch(
+        url=f'{_base_url()}{endpoint}',
+        data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
+        headers=_headers()
+    )
+    return r
+
+
 def delete(endpoint: str) -> requests.models.Response:
     """
     DELETE request to a ProxyML API endpoint.
@@ -599,13 +618,45 @@ def rotate_key() -> str | None:
     return None
 
 
-def list_models() -> list[dict] | None:
-    """Return metadata for all trained surrogate models, newest first."""
-    r = get(endpoint='/surrogate/models', params={})
+def list_models(limit: int = 50, offset: int = 0) -> dict | None:
+    """Return a page of trained surrogate models, newest first.
+
+    Args:
+        limit (int): maximum number of models to return (1–200, default 50).
+        offset (int): number of models to skip for pagination (default 0).
+    Returns:
+        Dict with ``models`` (list of metadata dicts) and ``total`` (int,
+        total number of surrogates regardless of pagination), or None on failure.
+    """
+    r = get(endpoint='/surrogate/models', params={'limit': limit, 'offset': offset})
     if r.status_code == 200:
-        return r.json()['models']
+        return r.json()
     logger.error(
         "List models failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def explain_local_batch(instances: list[list], version: str | None = None) -> dict | None:
+    """Per-feature contribution breakdown for multiple instances in one call.
+
+    Args:
+        instances (list[list]): list of feature vectors, each in schema order.
+        version (str): surrogate version UUID. None uses the latest version.
+    Returns:
+        Dict with ``results`` (one contribution entry per instance), ``model_version``,
+        ``task``, and ``schema_warning``, or None on failure.
+    """
+    payload: dict = {"instances": instances}
+    if version is not None:
+        payload["version"] = version
+    r = post(endpoint="/explain/local/batch", payload=payload)
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Batch local explanation failed with status %s: %s",
         r.status_code,
         r.text,
     )
@@ -627,6 +678,37 @@ def explain_local(instance: list, version: str | None = None) -> dict | None:
         return r.json()
     logger.error(
         "Local explanation failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def update_model(version: str, name: str | None = ..., comments: str | None = ...) -> dict | None:
+    """Update the name and/or comments of a surrogate without retraining.
+
+    Pass a string to set the field, or ``None`` to clear it. Omit a parameter
+    entirely to leave that field unchanged.
+
+    Args:
+        version (str): UUID of the surrogate to update.
+        name (str | None): new name, None to clear, or omit to leave unchanged.
+        comments (str | None): new comments, None to clear, or omit to leave unchanged.
+    Returns:
+        Updated model metadata dict, or None on failure.
+    """
+    payload: dict = {}
+    if name is not ...:
+        payload["name"] = name
+    if comments is not ...:
+        payload["comments"] = comments
+    if not payload:
+        raise ValueError("Provide at least one of: name, comments")
+    r = patch(endpoint=f'/surrogate/models/{version}', payload=payload)
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Update model failed with status %s: %s",
         r.status_code,
         r.text,
     )

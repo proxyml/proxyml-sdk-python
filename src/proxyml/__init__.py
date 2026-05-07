@@ -20,6 +20,8 @@ from proxyml.client import (
     get_usage,
     rotate_key,
     explain_local,
+    explain_local_batch,
+    update_model,
 )
 from proxyml.schema import (
     get_schema,
@@ -50,6 +52,8 @@ __all__ = [
     "get_usage",
     "rotate_key",
     "explain_local",
+    "explain_local_batch",
+    "update_model",
     "get_schema",
     "gen_continuous_schema",
     "gen_categorical_schema",

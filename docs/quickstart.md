@@ -116,7 +116,7 @@ if cf_df is not None:
 ```python
 from proxyml import predict
 
-result = predict(samples=sample, version=None)
+result = predict(sample=sample, version=None)
 print(result)  # {"prediction": 1, "model_version": "surrogate-<uuid>-classification"}
 ```
 
@@ -142,7 +142,7 @@ print(result["predictions"])    # one prediction per row
 from proxyml import find_counterfactuals
 
 samples = df.iloc[:10].values.tolist()
-results = find_counterfactuals(instances=samples, target=1)
+results = find_counterfactuals(samples=samples, target=1)
 
 # results is a list — one DataFrame (or None) per input instance
 for i, cf in enumerate(results):
@@ -150,6 +150,19 @@ for i, cf in enumerate(results):
         print(f"Instance {i}: {cf.iloc[0].to_dict()}")
     else:
         print(f"Instance {i}: no counterfactual found")
+```
+
+### Batch Local Explanations
+
+```python
+from proxyml import explain_local_batch
+
+instances = df.iloc[:10].values.tolist()
+result = explain_local_batch(instances=instances)
+
+for item in result["results"]:
+    top = item["feature_contributions"][0]
+    print(f"prediction={item['prediction']}  top feature={top['feature']} ({top['contribution']:+.3f})")
 ```
 
 ---
@@ -189,11 +202,24 @@ print("Removed features:", diff["features_removed"])
 ### List and Delete Models
 
 ```python
-from proxyml import list_models, delete_model
+from proxyml import list_models, delete_model, update_model
 
-models = list_models()
-for m in models:
+result = list_models()             # returns {"models": [...], "total": N}
+print(f"{result['total']} total models")
+for m in result["models"]:
     print(m["version"], m["task"], m["metrics"], m["trained_at"])
+
+# Paginate through all models
+all_models, offset = [], 0
+while True:
+    page = list_models(limit=50, offset=offset)
+    all_models.extend(page["models"])
+    if len(all_models) >= page["total"]:
+        break
+    offset += 50
+
+# Update a model's label without retraining
+update_model("<uuid>", name="prod-v3", comments="retrained on May data")
 
 # Delete a specific version
 delete_model("<uuid>")

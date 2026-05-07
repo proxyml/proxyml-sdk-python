@@ -12,6 +12,7 @@ from proxyml.client import (
     delete_schema,
     diff_models,
     explain_local,
+    explain_local_batch,
     export_surrogate,
     fetch_schema,
     find_counterfactual,
@@ -29,6 +30,7 @@ from proxyml.client import (
     rotate_key,
     synthesize_data,
     train_surrogate,
+    update_model,
 )
 
 
@@ -345,11 +347,24 @@ def test_train_surrogate_omits_none_metadata(mock_post):
 def test_list_models_success(mock_get):
     models = [{"version": "abc-123", "task": "regression", "name": "v1",
                "comments": None, "feature_names": None, "metrics": {"r2": 0.9},
-               "trained_at": "2026-04-19T12:00:00"}]
-    mock_get.return_value = _mock_response(200, {"models": models})
+               "trained_at": "2026-04-19T12:00:00", "mlflow_run_id": None}]
+    mock_get.return_value = _mock_response(200, {"models": models, "total": 1})
     result = list_models()
-    assert result == models
-    mock_get.assert_called_once_with(endpoint="/surrogate/models", params={})
+    assert result == {"models": models, "total": 1}
+    mock_get.assert_called_once_with(endpoint="/surrogate/models", params={"limit": 50, "offset": 0})
+
+
+@patch("proxyml.client.get")
+def test_list_models_pagination(mock_get):
+    models = [{"version": f"v{i}", "task": "regression", "name": None,
+               "comments": None, "feature_names": None, "metrics": None,
+               "trained_at": "2026-05-01T00:00:00", "mlflow_run_id": None}
+              for i in range(10)]
+    mock_get.return_value = _mock_response(200, {"models": models, "total": 42})
+    result = list_models(limit=10, offset=20)
+    assert result["total"] == 42
+    assert len(result["models"]) == 10
+    mock_get.assert_called_once_with(endpoint="/surrogate/models", params={"limit": 10, "offset": 20})
 
 
 @patch("proxyml.client.get")
@@ -798,3 +813,92 @@ def test_explain_local_with_version(mock_post):
 def test_explain_local_failure_returns_none(mock_post):
     mock_post.return_value = _mock_response(422, {"detail": "bad input"})
     assert explain_local(instance=[1.0, 2.0]) is None
+
+
+# ---------------------------------------------------------------------------
+# explain_local_batch
+# ---------------------------------------------------------------------------
+
+_EXPLAIN_LOCAL_BATCH_RESPONSE = {
+    "results": [_EXPLAIN_LOCAL_RESPONSE, _EXPLAIN_LOCAL_RESPONSE],
+    "model_version": "surrogate-abc-regression",
+    "task": "regression",
+    "schema_warning": None,
+}
+
+
+@patch("proxyml.client.post")
+def test_explain_local_batch_success(mock_post):
+    mock_post.return_value = _mock_response(200, _EXPLAIN_LOCAL_BATCH_RESPONSE)
+    instances = [[1.0, 2.0], [3.0, 4.0]]
+    result = explain_local_batch(instances=instances)
+    assert result == _EXPLAIN_LOCAL_BATCH_RESPONSE
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["instances"] == instances
+    assert "version" not in payload
+
+
+@patch("proxyml.client.post")
+def test_explain_local_batch_with_version(mock_post):
+    mock_post.return_value = _mock_response(200, _EXPLAIN_LOCAL_BATCH_RESPONSE)
+    uid = "550e8400-e29b-41d4-a716-446655440000"
+    explain_local_batch(instances=[[1.0, 2.0]], version=uid)
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["version"] == uid
+
+
+@patch("proxyml.client.post")
+def test_explain_local_batch_failure_returns_none(mock_post):
+    mock_post.return_value = _mock_response(422, {"detail": "bad input"})
+    assert explain_local_batch(instances=[[1.0, 2.0]]) is None
+
+
+# ---------------------------------------------------------------------------
+# update_model
+# ---------------------------------------------------------------------------
+
+@patch("proxyml.client.patch")
+def test_update_model_name(mock_patch):
+    meta = {"version": "abc-123", "task": "regression", "name": "new name",
+            "comments": None, "feature_names": None, "metrics": None,
+            "trained_at": "2026-05-07T00:00:00", "mlflow_run_id": None}
+    mock_patch.return_value = _mock_response(200, meta)
+    result = update_model("abc-123", name="new name")
+    assert result == meta
+    payload = mock_patch.call_args.kwargs["payload"]
+    assert payload == {"name": "new name"}
+
+
+@patch("proxyml.client.patch")
+def test_update_model_comments(mock_patch):
+    mock_patch.return_value = _mock_response(200, {})
+    update_model("abc-123", comments="some notes")
+    payload = mock_patch.call_args.kwargs["payload"]
+    assert payload == {"comments": "some notes"}
+
+
+@patch("proxyml.client.patch")
+def test_update_model_both_fields(mock_patch):
+    mock_patch.return_value = _mock_response(200, {})
+    update_model("abc-123", name="prod", comments="v2 data")
+    payload = mock_patch.call_args.kwargs["payload"]
+    assert payload == {"name": "prod", "comments": "v2 data"}
+
+
+@patch("proxyml.client.patch")
+def test_update_model_clear_field(mock_patch):
+    mock_patch.return_value = _mock_response(200, {})
+    update_model("abc-123", comments=None)
+    payload = mock_patch.call_args.kwargs["payload"]
+    assert payload == {"comments": None}
+
+
+def test_update_model_no_fields_raises():
+    with pytest.raises(ValueError):
+        update_model("abc-123")
+
+
+@patch("proxyml.client.patch")
+def test_update_model_failure_returns_none(mock_patch):
+    mock_patch.return_value = _mock_response(404, {"detail": "not found"})
+    assert update_model("abc-123", name="x") is None

@@ -126,11 +126,52 @@ result = predict_batch(samples=[[1.2, 0.5], [3.1, 0.8]])
 
 ---
 
-### `list_models()`
+### `list_models(limit=50, offset=0)`
 
-Return metadata for all trained surrogate models, newest first.
+Return a page of trained surrogate models, newest first.
 
-**Returns** `list[dict] | None` — List of model metadata dicts, each with keys `version`, `task`, `name`, `comments`, `feature_names`, `metrics`, and `trained_at`. Returns `None` on failure.
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `limit` | `int` | Maximum models to return. Range 1–200, default `50`. |
+| `offset` | `int` | Number of models to skip (for pagination). Default `0`. |
+
+**Returns** `dict | None` — Dict with keys:
+- `models`: list of metadata dicts, each with `version`, `task`, `name`, `comments`, `feature_names`, `metrics`, `trained_at`, and `mlflow_run_id`.
+- `total`: total number of surrogates for this account (independent of `limit`/`offset`).
+
+Returns `None` on failure.
+
+```python
+page = list_models(limit=10, offset=0)
+print(f"{len(page['models'])} of {page['total']} models")
+while len(page['models']) < page['total']:
+    offset += 10
+    next_page = list_models(limit=10, offset=offset)
+    page['models'].extend(next_page['models'])
+```
+
+---
+
+### `update_model(version, name=..., comments=...)`
+
+Update the name and/or comments of a surrogate without retraining. Omit a parameter to leave that field unchanged; pass `None` to clear it.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `version` | `str` | UUID of the surrogate to update. |
+| `name` | `str \| None` | New name, `None` to clear, or omit to leave unchanged. |
+| `comments` | `str \| None` | New comments, `None` to clear, or omit to leave unchanged. |
+
+**Returns** `dict | None` — Updated model metadata dict on success, `None` on failure. Raises `ValueError` if neither `name` nor `comments` is provided.
+
+```python
+update_model(version="<uuid>", name="prod-v3", comments="retrained on 2026-05 data")
+update_model(version="<uuid>", comments=None)  # clears comments, leaves name unchanged
+```
 
 ---
 
@@ -223,6 +264,54 @@ If `prediction_changed` is `False`, the explanation notes that the surrogate may
 
 ---
 
+## Local Explanations
+
+### `explain_local(instance, version=None)`
+
+Per-feature contribution breakdown for a single instance.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `instance` | `list` | A single feature vector in schema order. |
+| `version` | `str \| None` | Surrogate version UUID. `None` uses the latest version. |
+
+**Returns** `dict | None` — Dict with keys:
+- `prediction` — surrogate's output for this instance.
+- `feature_contributions` — list of `{feature, contribution, abs_contribution}` dicts, sorted by `abs_contribution` descending.
+- `intercept` — model intercept (`sum(contributions) + intercept ≈ raw decision function`).
+- `probabilities` — class probabilities for classification; `None` for regression.
+- `per_class_contributions` — per-class breakdown for multiclass; `None` otherwise.
+
+---
+
+### `explain_local_batch(instances, version=None)`
+
+Per-feature contribution breakdown for multiple instances in one API call.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `instances` | `list[list]` | List of feature vectors, each in schema order. |
+| `version` | `str \| None` | Surrogate version UUID. `None` uses the latest version. |
+
+**Returns** `dict | None` — Dict with keys:
+- `results` — list of per-instance dicts, each with the same structure as `explain_local` (minus `model_version` and `task`).
+- `model_version`, `task`, `schema_warning`.
+
+Returns `None` on failure.
+
+```python
+results = explain_local_batch(instances=df.values.tolist())
+for item in results["results"]:
+    top = item["feature_contributions"][0]
+    print(f"prediction={item['prediction']}  top feature={top['feature']} ({top['contribution']:+.3f})")
+```
+
+---
+
 ## Feature Importances & Model Insights
 
 ### `get_feature_importances(version=None)`
@@ -261,6 +350,7 @@ Return a combined report of feature importances, fidelity metrics, and model met
 - `name`, `comments` — User-supplied labels (may be `None`).
 - `feature_names` — Features used by this model.
 - `metrics` — Fidelity metrics dict (e.g. `{"r2": 0.92}` or `{"f1": 0.87, "accuracy": 0.88}`).
+- `mlflow_run_id` — MLflow run ID for this training run, for correlation with the MLflow UI (may be `None` for models trained before this field was added).
 - `feature_importances` — Same structure as `get_feature_importances`.
 - `per_class_importances` — Per-class breakdown for multiclass; `None` otherwise.
 - `note` — Explanation of coefficient scaling.
@@ -291,6 +381,7 @@ Both surrogates must have the same task type (both classification or both regres
 - `task` — Shared task type.
 - `metric_diff` — Dict mapping metric name → `{a, b, delta}` (e.g. `{"r2": {"a": 0.87, "b": 0.92, "delta": 0.05}}`).
 - `coefficient_diff` — List of `{feature, a, b, delta}` dicts for shared features, sorted by `abs(delta)` descending.
+- `per_class_coefficient_diff` — For multiclass models, a list of `{class_label, coefficient_diff}` dicts showing per-class shifts; `None` for binary or regression.
 - `features_added` — Features present in `version_b` but not `version_a`.
 - `features_removed` — Features present in `version_a` but not `version_b`.
 

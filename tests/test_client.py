@@ -11,9 +11,13 @@ from proxyml.client import (
     delete_model,
     delete_schema,
     diff_models,
+    explain_local,
     export_surrogate,
     fetch_schema,
+    find_counterfactual,
     find_counterfactuals,
+    get_feature_importances,
+    get_model_schema,
     get_model_summary,
     get_usage,
     interpret_counterfactual,
@@ -610,3 +614,187 @@ def test_export_surrogate_calls_correct_endpoint(mock_get):
 def test_export_surrogate_failure_returns_none(mock_get):
     mock_get.return_value = _mock_response(404, {"detail": "model not found"})
     assert export_surrogate(version="no-such-version") is None
+
+
+# ---------------------------------------------------------------------------
+# find_counterfactual
+# ---------------------------------------------------------------------------
+
+_CF_RESPONSE = {
+    "counterfactual": [1.5, "yes"],
+    "feature_names": ["f_cont", "f_cat"],
+    "feature_types": ["continuous", "categorical"],
+    "outlier_score": 0.1,
+    "warning": None,
+    "task": "classification",
+    "target_label": "high",
+    "model_version": "surrogate-abc-classification",
+}
+
+_CF_RESPONSE_NONE = {
+    "counterfactual": None,
+    "feature_names": ["f_cont", "f_cat"],
+    "feature_types": ["continuous", "categorical"],
+    "outlier_score": 0.9,
+    "warning": "no counterfactual found",
+    "task": "classification",
+    "target_label": "high",
+    "model_version": "surrogate-abc-classification",
+}
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactual_as_df(mock_post):
+    mock_post.return_value = _mock_response(200, _CF_RESPONSE)
+    result = find_counterfactual(sample=[1.0, "no"], target="high")
+    assert isinstance(result, pd.DataFrame)
+    assert list(result.columns) == ["f_cont", "f_cat"]
+    assert result["f_cont"].iloc[0] == 1.5
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactual_raw(mock_post):
+    mock_post.return_value = _mock_response(200, _CF_RESPONSE)
+    result = find_counterfactual(sample=[1.0, "no"], target="high", as_df=False)
+    assert result == _CF_RESPONSE
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactual_none_returns_none(mock_post):
+    mock_post.return_value = _mock_response(200, _CF_RESPONSE_NONE)
+    result = find_counterfactual(sample=[1.0, "no"], target="high")
+    assert result is None
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactual_payload(mock_post):
+    mock_post.return_value = _mock_response(200, _CF_RESPONSE)
+    uid = "550e8400-e29b-41d4-a716-446655440000"
+    find_counterfactual(
+        sample=[1.0, "no"], target="high",
+        n_neighbors=500, perturbation_scale=0.2, version=uid,
+    )
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["instance"] == [1.0, "no"]
+    assert payload["target_label"] == "high"
+    assert payload["n_neighbors"] == 500
+    assert payload["perturbation_scale"] == 0.2
+    assert payload["version"] == uid
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactual_no_version_in_payload(mock_post):
+    mock_post.return_value = _mock_response(200, _CF_RESPONSE)
+    find_counterfactual(sample=[1.0, "no"], target="high")
+    payload = mock_post.call_args.kwargs["payload"]
+    assert "version" not in payload
+
+
+@patch("proxyml.client.post")
+def test_find_counterfactual_failure_returns_none(mock_post):
+    mock_post.return_value = _mock_response(404, {"detail": "no surrogate"})
+    assert find_counterfactual(sample=[1.0, "no"], target="high") is None
+
+
+# ---------------------------------------------------------------------------
+# get_feature_importances
+# ---------------------------------------------------------------------------
+
+_IMPORTANCES_RESPONSE = {
+    "feature_importances": [
+        {"feature": "MedInc", "coefficient": 0.82, "abs_coefficient": 0.82},
+        {"feature": "Latitude", "coefficient": -0.61, "abs_coefficient": 0.61},
+    ],
+    "per_class_importances": None,
+    "model_version": "abc-123",
+    "task": "regression",
+    "note": "Coefficients are in the scaled feature space.",
+}
+
+
+@patch("proxyml.client.get")
+def test_get_feature_importances_success(mock_get):
+    mock_get.return_value = _mock_response(200, _IMPORTANCES_RESPONSE)
+    result = get_feature_importances()
+    assert result == _IMPORTANCES_RESPONSE
+    mock_get.assert_called_once_with(endpoint="/explain/importance", params={})
+
+
+@patch("proxyml.client.get")
+def test_get_feature_importances_with_version(mock_get):
+    mock_get.return_value = _mock_response(200, _IMPORTANCES_RESPONSE)
+    get_feature_importances(version="abc-123")
+    mock_get.assert_called_once_with(endpoint="/explain/importance", params={"version": "abc-123"})
+
+
+@patch("proxyml.client.get")
+def test_get_feature_importances_failure_returns_none(mock_get):
+    mock_get.return_value = _mock_response(404, {"detail": "not found"})
+    assert get_feature_importances() is None
+
+
+# ---------------------------------------------------------------------------
+# get_model_schema
+# ---------------------------------------------------------------------------
+
+_MODEL_SCHEMA_RESPONSE = {
+    "features": [
+        {"type": "continuous", "name": "age", "mean": 35.0, "std": 10.0, "min": 18.0, "max": 90.0},
+        {"type": "categorical", "name": "gender", "valid_categories": {"M": 0.5, "F": 0.5}},
+    ]
+}
+
+
+@patch("proxyml.client.get")
+def test_get_model_schema_success(mock_get):
+    mock_get.return_value = _mock_response(200, _MODEL_SCHEMA_RESPONSE)
+    result = get_model_schema(version="abc-123")
+    assert result == _MODEL_SCHEMA_RESPONSE
+    mock_get.assert_called_once_with(endpoint="/surrogate/models/abc-123/schema", params={})
+
+
+@patch("proxyml.client.get")
+def test_get_model_schema_failure_returns_none(mock_get):
+    mock_get.return_value = _mock_response(404, {"detail": "not found"})
+    assert get_model_schema(version="no-such-version") is None
+
+
+# ---------------------------------------------------------------------------
+# explain_local
+# ---------------------------------------------------------------------------
+
+_EXPLAIN_LOCAL_RESPONSE = {
+    "prediction": 1,
+    "feature_contributions": [
+        {"feature": "MedInc", "contribution": 0.5, "abs_contribution": 0.5},
+        {"feature": "Latitude", "contribution": -0.2, "abs_contribution": 0.2},
+    ],
+    "intercept": 0.1,
+    "probabilities": [0.2, 0.8],
+    "per_class_contributions": None,
+}
+
+
+@patch("proxyml.client.post")
+def test_explain_local_success(mock_post):
+    mock_post.return_value = _mock_response(200, _EXPLAIN_LOCAL_RESPONSE)
+    result = explain_local(instance=[1.0, 2.0])
+    assert result == _EXPLAIN_LOCAL_RESPONSE
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["instance"] == [1.0, 2.0]
+    assert "version" not in payload
+
+
+@patch("proxyml.client.post")
+def test_explain_local_with_version(mock_post):
+    mock_post.return_value = _mock_response(200, _EXPLAIN_LOCAL_RESPONSE)
+    uid = "550e8400-e29b-41d4-a716-446655440000"
+    explain_local(instance=[1.0, 2.0], version=uid)
+    payload = mock_post.call_args.kwargs["payload"]
+    assert payload["version"] == uid
+
+
+@patch("proxyml.client.post")
+def test_explain_local_failure_returns_none(mock_post):
+    mock_post.return_value = _mock_response(422, {"detail": "bad input"})
+    assert explain_local(instance=[1.0, 2.0]) is None

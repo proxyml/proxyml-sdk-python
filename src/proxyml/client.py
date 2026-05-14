@@ -622,6 +622,23 @@ def get_feature_importances(version: str | None = None) -> Any:
     return None
 
 
+def health_check() -> dict | None:
+    """Check API connectivity and version. Does not require authentication and does not count against usage quota.
+
+    Returns:
+        Dict with ``status``, ``model_loaded``, and ``version``, or None on failure.
+    """
+    try:
+        r = requests.get(url=f'{_base_url()}/health', timeout=_TIMEOUT)
+    except requests.exceptions.RequestException as exc:
+        logger.error("Network error calling /health: %s", exc)
+        return None
+    if r.status_code == 200:
+        return r.json()
+    logger.error("Health check failed with status %s: %s", r.status_code, r.text)
+    return None
+
+
 def get_usage() -> dict | None:
     """Return current tier, usage counts, and quota for the authenticated user."""
     r = get(endpoint='/account/usage', params={})

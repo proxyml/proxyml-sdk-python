@@ -3,11 +3,13 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+import requests
 
 from proxyml.client import (
     _cast_column,
     _base_url,
     _headers,
+    health_check,
     delete_model,
     delete_schema,
     diff_models,
@@ -32,6 +34,31 @@ from proxyml.client import (
     train_surrogate,
     update_model,
 )
+
+
+# ---------------------------------------------------------------------------
+# health_check
+# ---------------------------------------------------------------------------
+
+@patch("proxyml.client.requests.get")
+def test_health_check_success(mock_get):
+    mock_get.return_value = _mock_response(200, {"status": "ok", "model_loaded": True, "version": "0.1.0"})
+    result = health_check()
+    assert result == {"status": "ok", "model_loaded": True, "version": "0.1.0"}
+    mock_get.assert_called_once()
+    assert mock_get.call_args.kwargs["url"].endswith("/health")
+    assert "headers" not in mock_get.call_args.kwargs  # no auth header
+
+
+@patch("proxyml.client.requests.get")
+def test_health_check_failure_returns_none(mock_get):
+    mock_get.return_value = _mock_response(503, {"detail": "unavailable"})
+    assert health_check() is None
+
+
+@patch("proxyml.client.requests.get", side_effect=requests.exceptions.ConnectionError("connection refused"))
+def test_health_check_network_error_returns_none(mock_get):
+    assert health_check() is None
 
 
 # ---------------------------------------------------------------------------

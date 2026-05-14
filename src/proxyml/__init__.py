@@ -1,4 +1,5 @@
 from proxyml.client import (
+    health_check,
     put_schema,
     fetch_schema,
     list_schemas,
@@ -31,6 +32,7 @@ from proxyml.schema import (
 )
 
 __all__ = [
+    "health_check",
     "put_schema",
     "fetch_schema",
     "list_schemas",

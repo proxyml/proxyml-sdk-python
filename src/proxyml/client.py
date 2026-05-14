@@ -1,16 +1,26 @@
 import logging
-logger = logging.getLogger(__name__)
+import os
 from typing import Any
 
 import orjson
-import requests
-import os
 import numpy as np
 import pandas as pd
+import requests
 from pandas.api.types import is_float_dtype, is_integer_dtype
 
+logger = logging.getLogger(__name__)
 
 _BOOL_STRINGS = {"true", "false"}
+_TIMEOUT = 120
+
+
+class _ErrorResponse:
+    """Returned by HTTP helpers when a network-level error occurs."""
+    status_code = 0
+    text = ""
+
+    def json(self) -> dict:
+        return {}
 
 
 def _base_url() -> str:
@@ -33,7 +43,7 @@ def _headers() -> dict:
     }
 
 
-def post(endpoint: str, payload: dict) -> requests.models.Response:
+def post(endpoint: str, payload: dict) -> requests.models.Response | _ErrorResponse:
     """
     POSTs a request to a ProxyML API endpoint.
 
@@ -44,53 +54,65 @@ def post(endpoint: str, payload: dict) -> requests.models.Response:
     Returns:
         requests Response object.
     """
-    r = requests.post(
-        url=f'{_base_url()}{endpoint}',
-        data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
-        headers=_headers()
-    )
-    return r
+    try:
+        return requests.post(
+            url=f'{_base_url()}{endpoint}',
+            data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+    except requests.exceptions.RequestException as exc:
+        logger.error("Network error POSTing to %s: %s", endpoint, exc)
+        return _ErrorResponse()
 
 
-def put(endpoint: str, payload: dict) -> requests.models.Response:
+def put(endpoint: str, payload: dict) -> requests.models.Response | _ErrorResponse:
     """
     PUTs a request to a ProxyML API endpoint.
 
     Args:
         endpoint (str): ProxyML API endpoint.  PROXYML_BASE_URL is prepended e.g. use endpoint='/schemas' not 'https://api.proxyml.ai/api/v1/schemas'.
-        payload (dict): JSON payload to POST.
+        payload (dict): JSON payload to PUT.
 
     Returns:
         requests Response object.
-    """    
-    r = requests.put(
-        url=f'{_base_url()}{endpoint}',
-        data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
-        headers=_headers()
-    )
-    return r
+    """
+    try:
+        return requests.put(
+            url=f'{_base_url()}{endpoint}',
+            data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+    except requests.exceptions.RequestException as exc:
+        logger.error("Network error PUTting to %s: %s", endpoint, exc)
+        return _ErrorResponse()
 
 
-def get(endpoint: str, params: dict) -> requests.models.Response:
+def get(endpoint: str, params: dict | None = None) -> requests.models.Response | _ErrorResponse:
     """
     GETs a request to a ProxyML API endpoint.
 
     Args:
         endpoint (str): ProxyML API endpoint.  PROXYML_BASE_URL is prepended e.g. use endpoint='/schemas' not 'https://api.proxyml.ai/api/v1/schemas'.
-        params (dict): JSON payload to POST.
+        params (dict): query parameters.
 
     Returns:
         requests Response object.
     """
-    r = requests.get(
-        url=f'{_base_url()}{endpoint}',
-        headers=_headers(),
-        params=params
-    )
-    return r
+    try:
+        return requests.get(
+            url=f'{_base_url()}{endpoint}',
+            headers=_headers(),
+            params=params,
+            timeout=_TIMEOUT,
+        )
+    except requests.exceptions.RequestException as exc:
+        logger.error("Network error GETting %s: %s", endpoint, exc)
+        return _ErrorResponse()
 
 
-def patch(endpoint: str, payload: dict) -> requests.models.Response:
+def patch(endpoint: str, payload: dict) -> requests.models.Response | _ErrorResponse:
     """
     PATCHes a request to a ProxyML API endpoint.
 
@@ -101,15 +123,19 @@ def patch(endpoint: str, payload: dict) -> requests.models.Response:
     Returns:
         requests Response object.
     """
-    r = requests.patch(
-        url=f'{_base_url()}{endpoint}',
-        data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
-        headers=_headers()
-    )
-    return r
+    try:
+        return requests.patch(
+            url=f'{_base_url()}{endpoint}',
+            data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+    except requests.exceptions.RequestException as exc:
+        logger.error("Network error PATCHing %s: %s", endpoint, exc)
+        return _ErrorResponse()
 
 
-def delete(endpoint: str) -> requests.models.Response:
+def delete(endpoint: str) -> requests.models.Response | _ErrorResponse:
     """
     DELETE request to a ProxyML API endpoint.
 
@@ -119,11 +145,15 @@ def delete(endpoint: str) -> requests.models.Response:
     Returns:
         requests Response object.
     """
-    r = requests.delete(
-        url=f'{_base_url()}{endpoint}',
-        headers=_headers()
-    )
-    return r
+    try:
+        return requests.delete(
+            url=f'{_base_url()}{endpoint}',
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+    except requests.exceptions.RequestException as exc:
+        logger.error("Network error DELETEing %s: %s", endpoint, exc)
+        return _ErrorResponse()
 
 
 def put_schema(schema: dict, name: str = "default") -> Any:
@@ -345,7 +375,7 @@ def find_counterfactual(sample, target, n_neighbors: int = 10000, perturbation_s
         sample (list): point around which neighbors will be found.
         target (Any): the desired prediction outcome, can be a string or number for classification or a target predicted value for regression.
         n_neighbors (int): the number of neighbors to search, defaults to 10000.
-        pertubation_scale (float): controls the "wiggle" in the features around the provided sample. Defaults to 0.1.
+        perturbation_scale (float): controls the "wiggle" in the features around the provided sample. Defaults to 0.1.
         version (str): name of the surrogate model to run, defaults to "default."
         as_df (bool): if True, return the counterfactual as a dataframe. If False, returns JSON object.
     Returns:
@@ -467,7 +497,7 @@ def find_counterfactuals(
         samples (list): list of points around which neighbors will be found.
         target (Any): the desired prediction outcome, can be a string or number for classification or a target predicted value for regression.
         n_neighbors (int): the number of neighbors to search, defaults to 10000.
-        pertubation_scale (float): controls the "wiggle" in the features around the provided sample. Defaults to 0.1.
+        perturbation_scale (float): controls the "wiggle" in the features around the provided sample. Defaults to 0.1.
         version (str): name of the surrogate model to run, defaults to "default."
         as_df (bool): if True, return the counterfactual as a dataframe. If False, returns JSON object.
     Returns:

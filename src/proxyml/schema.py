@@ -1,10 +1,10 @@
 import logging
-logger = logging.getLogger(__name__)
 
-import os
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_float_dtype, is_integer_dtype
+
+logger = logging.getLogger(__name__)
 
 
 def gen_continuous_schema(s: pd.Series, name: str | None = None) -> dict:
@@ -73,6 +73,11 @@ def get_schema(df: pd.DataFrame, immutable_cols: list[str] | None) -> dict:
     Returns:
         data schema as dict. Review and adjust as needed.
     """
+    if immutable_cols:
+        unknown = set(immutable_cols) - set(df.columns)
+        if unknown:
+            logger.warning("immutable_cols not found in DataFrame and will be ignored: %s", sorted(unknown))
+
     schema = {
         'features': list(),
         '_note': (

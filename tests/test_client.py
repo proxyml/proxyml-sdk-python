@@ -312,7 +312,7 @@ def test_train_surrogate_with_metadata(mock_post):
     mock_post.return_value = _mock_response(200, {
         "version": "abc-123", "trained_at": "2026-04-19T12:00:00",
         "task": "regression", "name": "v1", "comments": "test run",
-        "feature_names": None, "metrics": {"r2": 0.95}, "warning": None,
+        "feature_names": None, "metrics": {"r2": 0.95}, "warnings": [],
     })
     result = train_surrogate(
         samples=[[1.0, 2.0]], predictions=[3.0],

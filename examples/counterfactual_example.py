@@ -26,15 +26,16 @@ black_box = RandomForestClassifier(n_estimators=100, random_state=42)
 black_box.fit(df.values, y)
 
 schema = get_schema(df, immutable_cols=None)
-proxyml.put_schema(schema)
+proxyml.put_schema(schema, name="breast_cancer")
 
-synth_df = proxyml.synthesize_data(num_points=500)
+synth_df = proxyml.synthesize_data(num_points=500, schema_name="breast_cancer")
 predictions = black_box.predict(synth_df.values).tolist()
 train_result = proxyml.train_surrogate(
     samples=synth_df.values.tolist(),
     predictions=predictions,
     feature_names=list(synth_df.columns),
     task="classification",
+    schema_name="breast_cancer",
 )
 surrogate_version = train_result.get("version") if train_result else None
 

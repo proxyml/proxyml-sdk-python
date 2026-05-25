@@ -201,11 +201,11 @@ def _mock_response(status_code, json_body):
 
 
 @patch("proxyml.client.put")
-def test_put_schema_default(mock_put):
+def test_put_schema_success(mock_put):
     mock_put.return_value = _mock_response(200, {"features": []})
-    result = put_schema({"features": []})
+    result = put_schema({"features": []}, name="myschema")
     assert result == {"features": []}
-    mock_put.assert_called_once_with(endpoint="/schema/default", payload={"features": []})
+    mock_put.assert_called_once_with(endpoint="/schema/myschema", payload={"features": []})
 
 
 @patch("proxyml.client.put")
@@ -218,7 +218,7 @@ def test_put_schema_named(mock_put):
 @patch("proxyml.client.put")
 def test_put_schema_failure(mock_put):
     mock_put.return_value = _mock_response(422, {"detail": "invalid"})
-    result = put_schema({"features": []})
+    result = put_schema({"features": []}, name="myschema")
     assert result is None
 
 
@@ -227,11 +227,11 @@ def test_put_schema_failure(mock_put):
 # ---------------------------------------------------------------------------
 
 @patch("proxyml.client.get")
-def test_fetch_schema_default(mock_get):
+def test_fetch_schema_success(mock_get):
     mock_get.return_value = _mock_response(200, {"features": [{"type": "continuous", "name": "age"}]})
-    result = fetch_schema()
+    result = fetch_schema(name="myschema")
     assert result["features"][0]["name"] == "age"
-    mock_get.assert_called_once_with(endpoint="/schema/default", params={})
+    mock_get.assert_called_once_with(endpoint="/schema/myschema", params={})
 
 
 @patch("proxyml.client.get")
@@ -309,12 +309,12 @@ def test_synthesize_data_no_sample(mock_post):
         "feature_names": ["f_cont", "f_cat"],
         "feature_types": ["continuous", "categorical"],
     })
-    df = synthesize_data(num_points=2, sample=None)
+    df = synthesize_data(num_points=2, sample=None, schema_name="myschema")
     assert isinstance(df, pd.DataFrame)
     assert list(df.columns) == ["f_cont", "f_cat"]
     payload = mock_post.call_args.kwargs["payload"]
     assert payload["n"] == 2
-    assert payload["schema_name"] == "default"
+    assert payload["schema_name"] == "myschema"
 
 
 @patch("proxyml.client.post")
@@ -330,7 +330,7 @@ def test_synthesize_data_named_schema(mock_post):
 @patch("proxyml.client.post")
 def test_synthesize_data_failure_returns_none(mock_post):
     mock_post.return_value = _mock_response(500, {})
-    result = synthesize_data(num_points=10, sample=None)
+    result = synthesize_data(num_points=10, sample=None, schema_name="myschema")
     assert result is None
 
 
@@ -343,12 +343,12 @@ def test_train_surrogate_with_metadata(mock_post):
     })
     result = train_surrogate(
         samples=[[1.0, 2.0]], predictions=[3.0],
-        feature_names=None, name="v1", comments="test run",
+        feature_names=None, schema_name="myschema", name="v1", comments="test run",
     )
     payload = mock_post.call_args.kwargs["payload"]
     assert payload["name"] == "v1"
     assert payload["comments"] == "test run"
-    assert payload["schema_name"] == "default"
+    assert payload["schema_name"] == "myschema"
     assert result["version"] == "abc-123"
     assert result["trained_at"] == "2026-04-19T12:00:00"
 
@@ -364,7 +364,7 @@ def test_train_surrogate_named_schema(mock_post):
 @patch("proxyml.client.post")
 def test_train_surrogate_omits_none_metadata(mock_post):
     mock_post.return_value = _mock_response(200, {"version": "abc-123"})
-    train_surrogate(samples=[[1.0]], predictions=[1.0], feature_names=None)
+    train_surrogate(samples=[[1.0]], predictions=[1.0], feature_names=None, schema_name="myschema")
     payload = mock_post.call_args.kwargs["payload"]
     assert "name" not in payload
     assert "comments" not in payload

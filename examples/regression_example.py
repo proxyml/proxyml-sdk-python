@@ -31,13 +31,13 @@ black_box.fit(df.values, y)
 schema = get_schema(df, immutable_cols = ['Latitude', 'Longitude', 'HouseAge'])
 print("\nSchema generated. Features:", [f["name"] for f in schema["features"]])
 
-result = proxyml.put_schema(schema)
+result = proxyml.put_schema(schema, name="housing")
 print("\nSchema upload result:", result)
 
 # ---------------------------------------------------------------------------
 # 3. Synthesize training data for the surrogate
 # ---------------------------------------------------------------------------
-synth_df = proxyml.synthesize_data(num_points=500)
+synth_df = proxyml.synthesize_data(num_points=500, schema_name="housing")
 print(f"\nSynthesized {len(synth_df)} rows with columns: {list(synth_df.columns)}")
 
 # ---------------------------------------------------------------------------
@@ -55,6 +55,7 @@ train_result = proxyml.train_surrogate(
     feature_names=list(synth_df.columns),
     task="auto",  # or "regression"
     test_size=0.2,
+    schema_name="housing",
 )
 print("\nSurrogate training result:", train_result)
 print("\nSurrogate feature importance:", proxyml.get_feature_importances(version=train_result["version"]))

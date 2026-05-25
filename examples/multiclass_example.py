@@ -30,13 +30,13 @@ black_box.fit(df.values, y)
 schema = get_schema(df, immutable_cols=None)
 print("\nSchema generated. Features:", [f["name"] for f in schema["features"]])
 
-result = proxyml.put_schema(schema)
+result = proxyml.put_schema(schema, name="iris")
 print("\nSchema upload result:", result)
 
 # ---------------------------------------------------------------------------
 # 3. Synthesize training data for the surrogate
 # ---------------------------------------------------------------------------
-synth_df = proxyml.synthesize_data(num_points=150)
+synth_df = proxyml.synthesize_data(num_points=150, schema_name="iris")
 print(f"\nSynthesized {len(synth_df)} rows with columns: {list(synth_df.columns)}")
 
 # ---------------------------------------------------------------------------
@@ -54,6 +54,7 @@ train_result = proxyml.train_surrogate(
     feature_names=list(synth_df.columns),
     task="classification",
     test_size=0.2,
+    schema_name="iris",
 )
 print("\nSurrogate training result:", train_result)
 importances = proxyml.get_feature_importances(version=train_result["version"])                                                                                                                                                                        

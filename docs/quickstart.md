@@ -19,6 +19,9 @@ from proxyml import get_schema, put_schema
 
 df = pd.read_csv("data.csv")
 
+# Schemas are named — synthesis and training reference them by this name
+SCHEMA_NAME = "my_schema"
+
 # Mark features that should not be changed in counterfactuals
 schema = get_schema(df, immutable_cols=["age", "gender"])
 
@@ -28,7 +31,7 @@ schema = get_schema(df, immutable_cols=["age", "gender"])
 print(schema)
 
 # Upload to ProxyML
-put_schema(schema)
+put_schema(schema, name=SCHEMA_NAME)
 ```
 
 The schema is auto-generated from column dtypes:
@@ -50,11 +53,11 @@ Generate synthetic data that respects your schema's distributions:
 from proxyml import synthesize_data
 
 # Sample from the learned distribution
-synth_df = synthesize_data(num_points=1000)
+synth_df = synthesize_data(num_points=1000, schema_name=SCHEMA_NAME)
 
 # Or generate neighbors around a specific instance
 instance = df.iloc[0].tolist()
-local_df = synthesize_data(num_points=200, sample=instance)
+local_df = synthesize_data(num_points=200, sample=instance, schema_name=SCHEMA_NAME)
 ```
 
 ## Step 3 — Train a Surrogate Model
@@ -72,6 +75,7 @@ result = train_surrogate(
     feature_names=list(synth_df.columns),
     task="auto",       # "auto", "classification", or "regression"
     test_size=0.2,
+    schema_name=SCHEMA_NAME,
 )
 print(result)  # version UUID, metrics, etc.
 version = result["version"]
@@ -131,8 +135,8 @@ For large workloads, use batch endpoints to make a single API call instead of on
 ```python
 from proxyml import predict_batch
 
-instances = df.values.tolist()  # multiple rows
-result = predict_batch(instances=instances)
+samples = df.values.tolist()  # multiple rows
+result = predict_batch(samples=samples)
 print(result["predictions"])    # one prediction per row
 ```
 

@@ -42,11 +42,12 @@ from proxyml import get_schema
 df = pd.read_csv("data.csv")
 schema = get_schema(df, immutable_cols=["age", "gender"])
 
-# 2. Upload the schema
-proxyml.put_schema(schema)
+# 2. Upload the schema under a name — synthesis and training reference it by name
+SCHEMA_NAME = "my_schema"
+proxyml.put_schema(schema, name=SCHEMA_NAME)
 
 # 3. Generate synthetic training data
-synth_df = proxyml.synthesize_data(num_points=500)
+synth_df = proxyml.synthesize_data(num_points=500, schema_name=SCHEMA_NAME)
 
 # 4. Score synthetic data with your black-box model
 predictions = my_model.predict(synth_df.values.tolist())
@@ -56,6 +57,7 @@ proxyml.train_surrogate(
     samples=synth_df.values.tolist(),
     predictions=predictions,
     feature_names=list(synth_df.columns),
+    schema_name=SCHEMA_NAME,
 )
 
 # 6. Find a counterfactual explanation
@@ -91,9 +93,9 @@ See [`docs/quickstart.md`](docs/quickstart.md) for a full walkthrough and [`docs
 | Function | Description |
 |---|---|
 | `get_schema(df, immutable_cols)` | Generate a schema dict from a DataFrame |
-| `put_schema(schema)` | Upload a schema to the API |
-| `synthesize_data(num_points, sample, as_df)` | Generate synthetic data points |
-| `train_surrogate(samples, predictions, feature_names, task, test_size)` | Train a surrogate model |
+| `put_schema(schema, name)` | Upload a schema to the API under a name |
+| `synthesize_data(num_points, sample, as_df, schema_name)` | Generate synthetic data points |
+| `train_surrogate(samples, predictions, feature_names, task, test_size, schema_name)` | Train a surrogate model |
 | `predict(sample, version)` | Score a single sample with the surrogate model |
 | `find_counterfactual(sample, target, ...)` | Find a counterfactual for a given sample |
 | `interpret_counterfactual(sample, counterfactual, ...)` | Generate a human-readable explanation |
@@ -104,6 +106,10 @@ Full documentation: [`docs/api.md`](docs/api.md)
 
 - [`examples/basic_usage.py`](examples/basic_usage.py) — Schema upload, data synthesis, surrogate training
 - [`examples/counterfactual_example.py`](examples/counterfactual_example.py) — Counterfactual search and interpretation
+- [`examples/regression_example.py`](examples/regression_example.py) — Regression with immutable features
+- [`examples/multiclass_example.py`](examples/multiclass_example.py) — Multi-class classification with per-class feature importances
+- [`examples/testing_example.py`](examples/testing_example.py) — Using a surrogate as a reference model in CI
+- [`examples/surrogate_export_example.py`](examples/surrogate_export_example.py) — Exporting a surrogate and reproducing its predictions locally
 
 ## License
 

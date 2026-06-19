@@ -35,34 +35,71 @@ The returned dict includes a `_note` key with a reminder to review integer colum
 
 ---
 
-### `put_schema(schema)`
+### `put_schema(schema, name)`
 
-Upload a schema to the ProxyML API.
+Upload a schema to the ProxyML API under a name. Schemas are named resources — `synthesize_data` and `train_surrogate` reference them by `schema_name`.
 
 **Parameters**
 
 | Name | Type | Description |
 |---|---|---|
 | `schema` | `dict` | Schema dict, typically produced by `get_schema`. |
+| `name` | `str` | Name to store the schema under. Overwrites any existing schema with the same name. |
 
 **Returns** `dict | None` — API response on success, `None` on failure.
 
 ---
 
-## Data Synthesis
+### `fetch_schema(name)`
 
-### `synthesize_data(num_points=100, sample=None, as_df=True, schema_name="default")`
-
-Generate synthetic data points using the uploaded schema.
+Retrieve a previously uploaded schema by name.
 
 **Parameters**
 
 | Name | Type | Description |
 |---|---|---|
-| `num_points` | `int` | Number of data points to generate. |
+| `name` | `str` | Name the schema was uploaded under. |
+
+**Returns** `dict | None` — The schema dict, or `None` if not found / on failure.
+
+---
+
+### `list_schemas()`
+
+List all named schemas for the authenticated user.
+
+**Returns** `list[dict] | None` — List of schema dicts, or `None` on failure.
+
+---
+
+### `delete_schema(name)`
+
+Delete a named schema.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `name` | `str` | Name of the schema to delete. |
+
+**Returns** `bool` — `True` on success, `False` if the schema was not found or the request failed.
+
+---
+
+## Data Synthesis
+
+### `synthesize_data(num_points=100, sample=None, as_df=True, *, schema_name)`
+
+Generate synthetic data points using a previously uploaded schema.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `num_points` | `int` | Number of data points to generate. Default `100`. |
 | `sample` | `list \| None` | If provided, generates neighbors blended around this instance. If `None`, samples from the global distribution. |
 | `as_df` | `bool` | If `True` (default), returns a typed `pd.DataFrame`. If `False`, returns the raw API response dict. |
-| `schema_name` | `str` | Name of the schema to use. Default `"default"`. |
+| `schema_name` | `str` | Name of the schema to use (as passed to `put_schema`). Keyword-only, required. |
 
 **Returns** `pd.DataFrame | dict | None`
 
@@ -70,7 +107,7 @@ Generate synthetic data points using the uploaded schema.
 
 ## Surrogate Model
 
-### `train_surrogate(samples, predictions, feature_names, task="auto", test_size=0.2, schema_name="default", name=None, comments=None)`
+### `train_surrogate(samples, predictions, feature_names, task="auto", test_size=0.2, *, schema_name, name=None, comments=None)`
 
 Train a surrogate model on scored synthetic data.
 
@@ -83,11 +120,27 @@ Train a surrogate model on scored synthetic data.
 | `feature_names` | `list[str] \| None` | Column names matching the order of features in `samples`. Pass `None` to use all schema features in schema order. |
 | `task` | `str` | `"auto"`, `"classification"`, or `"regression"`. `"auto"` infers from `predictions`. |
 | `test_size` | `float` | Fraction of data held out for evaluation. Default `0.2`. |
-| `schema_name` | `str` | Name of the schema to use. Default `"default"`. |
+| `schema_name` | `str` | Name of the schema to use (as passed to `put_schema`). Keyword-only, required. |
 | `name` | `str \| None` | Optional human-readable label for this version. |
 | `comments` | `str \| None` | Optional free-text notes stored with the model. |
 
 **Returns** `dict | None` — API response including `version` (UUID), `trained_at`, `task`, `metrics`, and any training `warning`, or `None` on failure.
+
+---
+
+### `export_surrogate(version)`
+
+Export a trained surrogate to JSON — coefficients, intercept, scalers, and per-feature metadata needed to reconstruct its predictions without the SDK or API.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `version` | `str` | Version UUID of the surrogate to export. |
+
+**Returns** `dict | None` — JSON object with `intercept` and a `features` list (each entry has `name`, `type`, and either `scaler_mean`/`scaler_scale`/`coefficient` for continuous features or `ohe_categories`/`category_coefficients` for categorical features), or `None` on failure.
+
+See [`examples/surrogate_export_example.py`](../examples/surrogate_export_example.py) for a worked example that reconstructs predictions locally from the export.
 
 ---
 
@@ -186,6 +239,20 @@ Delete a surrogate model by its UUID.
 | `model_id` | `str` | UUID of the surrogate model to delete. |
 
 **Returns** `bool` — `True` on success, `False` if the model was not found or the request failed.
+
+---
+
+### `get_model_schema(version)`
+
+Retrieve the data schema a particular surrogate was trained against.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `version` | `str` | Version UUID of the surrogate model. |
+
+**Returns** `dict | None` — The schema dict, or `None` on failure.
 
 ---
 
@@ -389,6 +456,37 @@ Both surrogates must have the same task type (both classification or both regres
 diff = diff_models(version_a="aaa-...", version_b="bbb-...")
 for entry in diff["coefficient_diff"]:
     print(f"{entry['feature']}: {entry['a']:.3f} → {entry['b']:.3f} (Δ {entry['delta']:+.3f})")
+```
+
+---
+
+## Account
+
+### `health_check()`
+
+Check API connectivity and version. Does not require an API key and does not count against usage quota.
+
+**Returns** `dict | None` — Dict with `status`, `model_loaded`, and `version`, or `None` on failure (including network errors).
+
+---
+
+### `get_usage()`
+
+Return the current tier, usage counts, and quota for the authenticated user.
+
+**Returns** `dict | None` — Usage/quota dict, or `None` on failure.
+
+---
+
+### `rotate_key()`
+
+Rotate the API key, revoking all previously issued keys.
+
+**Returns** `str | None` — The new API key, or `None` on failure.
+
+```python
+new_key = rotate_key()
+# Update PROXYML_API_KEY in your environment with new_key before making further calls
 ```
 
 ---

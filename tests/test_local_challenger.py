@@ -29,9 +29,9 @@ def _df(n=200, seed=0):
 def test_train_challenger_regression_reproduces_via_export():
     schema = _schema()
     df = _df(seed=1)
-    predictions = df["age"] * 0.5 + df["income"] * 0.0001
+    target = df["age"] * 0.5 + df["income"] * 0.0001
 
-    result = train_challenger(df, predictions, schema, complexity=Complexity.MODERATE, task="regression")
+    result = train_challenger(df, target, schema, complexity=Complexity.MODERATE, task="regression")
 
     assert isinstance(result, TrainedChallenger)
     assert result.task == "regression"
@@ -46,9 +46,9 @@ def test_train_challenger_regression_reproduces_via_export():
 def test_train_challenger_classification():
     schema = _schema()
     df = _df(seed=2, n=300)
-    predictions = np.where(df["age"] > 50, "senior", "junior")
+    target = np.where(df["age"] > 50, "senior", "junior")
 
-    result = train_challenger(df, predictions, schema, complexity=Complexity.MODERATE, task="classification")
+    result = train_challenger(df, target, schema, complexity=Complexity.MODERATE, task="classification")
 
     assert result.task == "classification"
     assert "f1" in result.metrics
@@ -58,10 +58,10 @@ def test_train_challenger_classification():
 def test_train_challenger_simple_rung_is_more_regularized_than_flexible():
     schema = _schema()
     df = _df(seed=3)
-    predictions = df["age"] * 0.5 + df["income"] * 0.0001
+    target = df["age"] * 0.5 + df["income"] * 0.0001
 
-    simple = train_challenger(df, predictions, schema, complexity=Complexity.SIMPLE, task="regression")
-    flexible = train_challenger(df, predictions, schema, complexity=Complexity.FLEXIBLE, task="regression")
+    simple = train_challenger(df, target, schema, complexity=Complexity.SIMPLE, task="regression")
+    flexible = train_challenger(df, target, schema, complexity=Complexity.FLEXIBLE, task="regression")
 
     assert simple.pipeline.named_steps["estimator"].alpha_ >= 0
     assert flexible.pipeline.named_steps["estimator"].alpha_ >= 0
@@ -84,7 +84,7 @@ def test_train_challenger_feature_subset():
             "region": np.random.RandomState(4).choice(["east", "west"], 100),
         }
     )
-    predictions = df["age"] * 0.5
+    target = df["age"] * 0.5
 
-    result = train_challenger(df, predictions, schema, feature_names=["age"], task="regression")
+    result = train_challenger(df, target, schema, feature_names=["age"], task="regression")
     assert [f.name for f in result.export.features] == ["age"]

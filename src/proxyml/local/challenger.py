@@ -1,10 +1,11 @@
-"""Train a challenger surrogate locally, with no round-trip to the API.
+"""Train a challenger model locally, with no round-trip to the API.
 
 Linear-only by design (LogisticRegressionCV / RidgeCV, matching the server's
 default surrogate): a challenger's complexity ladder varies regularization
 strength rather than model family, so results stay explainable by the same
 closed-form coefficient math the server uses, and comparable to a
-server-trained surrogate via the exact same export contract.
+server-trained surrogate via the exact same export contract — whether the
+training target was real ground truth or a black box's predictions.
 """
 
 from __future__ import annotations
@@ -113,7 +114,7 @@ class TrainedChallenger:
 
 def train_challenger(
     df: pd.DataFrame,
-    predictions: np.ndarray | list,
+    target: np.ndarray | list,
     schema: FeatureSchema,
     *,
     complexity: Complexity = Complexity.MODERATE,
@@ -121,21 +122,26 @@ def train_challenger(
     task: Literal["classification", "regression", "auto"] = "auto",
     test_size: float = 0.2,
 ) -> TrainedChallenger:
-    """Train a linear challenger surrogate on ``df`` against a black box's ``predictions``.
+    """Train a linear challenger model on ``df`` against ``target``, locally.
 
-    No round-trip to the API — everything happens in-process via
-    ``proxyml_core.modeling``. The result's ``export`` is a ``SurrogateExport``,
-    structurally identical to what ``export_surrogate()`` returns for a
-    server-trained surrogate, so the two can be compared with the same
-    ``proxyml_core.export.predict_from_export`` arithmetic.
+    ``target`` can be either real ground-truth labels (training a genuine
+    challenger to compare against a champion model on real outcomes) or a
+    black box's predictions (training a surrogate/explainer of that model) —
+    the fit itself doesn't care which. No round-trip to the API — everything
+    happens in-process via ``proxyml_core.modeling``. The result's ``export``
+    is a ``SurrogateExport``, structurally identical to what
+    ``export_surrogate()`` returns for a server-trained surrogate, so the two
+    can be compared with the same ``proxyml_core.export.predict_from_export``
+    arithmetic.
 
     Args:
-        df: samples the black box was scored on, one column per schema feature.
-        predictions: the black box's output for each row of ``df``.
+        df: samples to train on, one column per schema feature.
+        target: the value to predict for each row of ``df`` — ground-truth
+            labels or a black box's output, in the same order as ``df``.
         schema: FeatureSchema describing ``df``'s columns (e.g. from ``get_schema``).
         complexity: which rung of ``LADDERS`` to train at.
         feature_names: subset of ``schema.features`` to train on; omit for all.
-        task: "classification", "regression", or "auto" to infer from ``predictions``.
+        task: "classification", "regression", or "auto" to infer from ``target``.
         test_size: fraction of data held out to compute fidelity metrics.
     """
     rung = LADDERS[complexity]
@@ -147,7 +153,7 @@ def train_challenger(
     col_order = [f.name for f in features]
 
     X = df[col_order].to_numpy(dtype=object)
-    y = np.asarray(predictions)
+    y = np.asarray(target)
 
     if task == "auto":
         classification = is_classification(y)

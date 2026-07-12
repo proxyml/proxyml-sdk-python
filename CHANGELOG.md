@@ -12,9 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `proxyml[local]`) shared modeling code, now shared with the backend so both sides
   score exports with the exact same arithmetic
 - `proxyml.local` (requires `pip install 'proxyml[local]'`) — `train_challenger`,
-  `Complexity`, `Rung`, `LADDERS` for training a linear challenger surrogate locally,
-  with no round-trip to the API. Its output is a `SurrogateExport`, structurally
-  identical to what `export_surrogate()` returns for a server-trained surrogate
+  `Complexity`, `Rung`, `LADDERS` for training a linear challenger model locally,
+  with no round-trip to the API. `target` can be real ground-truth labels (a
+  genuine champion/challenger comparison) or a black box's predictions (a
+  surrogate/explainer) — the fit doesn't care which. Output is a
+  `SurrogateExport`, structurally identical to what `export_surrogate()` returns
+  for a server-trained surrogate
+- `proxyml.local.train_auto_challenger(data, target_col, ...)` — convenience
+  wrapper that loads a CSV path or DataFrame, infers a schema, and trains a
+  challenger in one call
+- `train_auto_surrogate(data, target_col, ...)` — the same convenience wrapper
+  for the server-side path: loads data that already has samples and a target
+  column, infers/uploads a schema, and trains a surrogate, skipping
+  `synthesize_data()` entirely
 
 ### Changed
 - **breaking**: `get_schema()` (and the schema it builds) now returns a

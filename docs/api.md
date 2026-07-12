@@ -8,6 +8,8 @@ import proxyml
 from proxyml import get_schema, put_schema, synthesize_data, ...
 ```
 
+`proxyml.local` (local, offline model training — see [below](#local-training-proxymllocal)) requires an extra: `pip install 'proxyml[local]'`.
+
 ---
 
 ## Schema
@@ -23,15 +25,15 @@ Infer a ProxyML schema from a pandas DataFrame.
 | `df` | `pd.DataFrame` | Source data. Column dtypes determine feature types. |
 | `immutable_cols` | `list[str] \| None` | Columns excluded from counterfactual search. |
 
-**Returns** `dict` — Schema dict suitable for passing to `put_schema`.
+**Returns** [`proxyml_core.schema.FeatureSchema`](https://github.com/proxyml/proxyml-core) — a typed schema. Its `.features` list holds `Feature` subclasses (`ContinuousFeature`, `CategoricalFeature`, `CategoricalOrdinalFeature`, `NumericOrdinalFeature`, `CountFeature`), suitable for passing to `put_schema`.
 
 **Notes**
-- Float columns → `continuous` (mean, std, min, max)
-- Bool columns → `categorical` (true/false frequencies)
-- Integer columns → `count` (Poisson lambda, max). Change to `categorical_ordinal` manually for ordered categories.
-- Object/string columns → `categorical` (category frequencies)
+- Float columns → `ContinuousFeature` (mean, std, min, max)
+- Bool columns → `CategoricalFeature` (true/false frequencies)
+- Integer columns → `CountFeature` (Poisson lambda, max). Construct a `CategoricalOrdinalFeature`/`NumericOrdinalFeature` manually for ordered categories.
+- Object/string columns → `CategoricalFeature` (category frequencies)
 
-The returned dict includes a `_note` key with a reminder to review integer columns. Remove it before uploading if desired.
+Review and adjust the returned schema before uploading if needed — e.g. `schema.features[0].immutable = True`.
 
 ---
 
@@ -43,10 +45,10 @@ Upload a schema to the ProxyML API under a name. Schemas are named resources —
 
 | Name | Type | Description |
 |---|---|---|
-| `schema` | `dict` | Schema dict, typically produced by `get_schema`. |
+| `schema` | `FeatureSchema` | Typically produced by `get_schema`. |
 | `name` | `str` | Name to store the schema under. Overwrites any existing schema with the same name. |
 
-**Returns** `dict | None` — API response on success, `None` on failure.
+**Returns** `FeatureSchema | None` — the stored schema on success, `None` on failure.
 
 ---
 
@@ -60,7 +62,7 @@ Retrieve a previously uploaded schema by name.
 |---|---|---|
 | `name` | `str` | Name the schema was uploaded under. |
 
-**Returns** `dict | None` — The schema dict, or `None` if not found / on failure.
+**Returns** `FeatureSchema | None` — the schema, or `None` if not found / on failure.
 
 ---
 
@@ -68,7 +70,7 @@ Retrieve a previously uploaded schema by name.
 
 List all named schemas for the authenticated user.
 
-**Returns** `list[dict] | None` — List of schema dicts, or `None` on failure.
+**Returns** `list[dict] | None` — list of schema *metadata* dicts (`name`, `updated_at`, `feature_names`, `surrogate_versions` — not full feature definitions; use `fetch_schema` for that), or `None` on failure.
 
 ---
 
@@ -128,9 +130,36 @@ Train a surrogate model on scored synthetic data.
 
 ---
 
+### `train_auto_surrogate(data, target_col, feature_names=None, task="auto", test_size=0.2, *, schema_name, immutable_cols=None, name=None, comments=None)`
+
+Convenience wrapper for the common case where you already have samples and a target/prediction column in one place. Loads `data`, infers and uploads a schema, and trains a surrogate against `target_col` — all in one call. Skips `synthesize_data()` entirely, since `data` already contains the samples you want to train on (if you need the server to generate synthetic samples for you to score first, use `synthesize_data()` + `train_surrogate()` directly — see [`examples/basic_usage.py`](../examples/basic_usage.py)).
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `data` | `str \| Path \| pd.DataFrame` | A CSV path, or an already-loaded DataFrame, containing both the feature columns and `target_col`. |
+| `target_col` | `str` | Name of the column to train against — either real ground-truth labels or a black box's predictions. |
+| `feature_names` | `list[str] \| None` | Subset of feature columns to train on; omit for all. The full sample width is always uploaded — this only tells the surrogate which columns to fit on. |
+| `task` | `str` | `"auto"`, `"classification"`, or `"regression"`. |
+| `test_size` | `float` | Fraction of data held out for evaluation. Default `0.2`. |
+| `schema_name` | `str` | Name to store the inferred schema under. Keyword-only, required. |
+| `immutable_cols` | `list[str] \| None` | Passed through to `get_schema`. |
+| `name` | `str \| None` | Optional human-readable label for this version. |
+| `comments` | `str \| None` | Optional free-text notes stored with the model. |
+
+**Returns** `dict | None` — same shape as `train_surrogate`, or `None` if schema upload or training failed.
+
+```python
+result = proxyml.train_auto_surrogate("data.csv", "approved", schema_name="my_schema")
+version = result["version"]
+```
+
+---
+
 ### `export_surrogate(version)`
 
-Export a trained surrogate to JSON — coefficients, intercept, scalers, and per-feature metadata needed to reconstruct its predictions without the SDK or API.
+Export a trained surrogate — coefficients, intercept, scalers, and per-feature metadata needed to reconstruct its predictions without the SDK or API.
 
 **Parameters**
 
@@ -138,9 +167,16 @@ Export a trained surrogate to JSON — coefficients, intercept, scalers, and per
 |---|---|---|
 | `version` | `str` | Version UUID of the surrogate to export. |
 
-**Returns** `dict | None` — JSON object with `intercept` and a `features` list (each entry has `name`, `type`, and either `scaler_mean`/`scaler_scale`/`coefficient` for continuous features or `ohe_categories`/`category_coefficients` for categorical features), or `None` on failure.
+**Returns** [`proxyml_core.export.SurrogateExport`](https://github.com/proxyml/proxyml-core)` | None` — a typed, versioned export (stamped with `export_schema_version`), or `None` on failure.
 
-See [`examples/surrogate_export_example.py`](../examples/surrogate_export_example.py) for a worked example that reconstructs predictions locally from the export.
+Score it locally, with zero sklearn, via `proxyml_core.export.predict_from_export(export, sample)` — it handles every feature type the export can carry (continuous, count, categorical, both ordinal types) and multiclass, unlike a hand-rolled reconstruction. See [`examples/surrogate_export_example.py`](../examples/surrogate_export_example.py) for a worked example.
+
+```python
+export = proxyml.export_surrogate(version="<uuid>")
+
+from proxyml_core.export import predict_from_export
+prediction = predict_from_export(export, sample={"age": 42, "income": 55000})
+```
 
 ---
 
@@ -252,7 +288,78 @@ Retrieve the data schema a particular surrogate was trained against.
 |---|---|---|
 | `version` | `str` | Version UUID of the surrogate model. |
 
-**Returns** `dict | None` — The schema dict, or `None` on failure.
+**Returns** `FeatureSchema | None` — the schema, or `None` on failure.
+
+---
+
+## Local Training (`proxyml.local`)
+
+Requires the `local` extra: `pip install 'proxyml[local]'` (adds scikit-learn and scipy). Everything below runs in-process — no API calls, no data leaves your machine.
+
+### `train_challenger(df, target, schema, *, complexity=Complexity.MODERATE, feature_names=None, task="auto", test_size=0.2)`
+
+Train a linear challenger model on `df` against `target`, locally. `target` can be real ground-truth labels (training a genuine challenger to compare against a champion model on real outcomes) or a black box's predictions (training a surrogate/explainer of that model) — the fit itself doesn't care which.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `df` | `pd.DataFrame` | Samples to train on, one column per schema feature. |
+| `target` | `np.ndarray \| list` | The value to predict for each row of `df`. |
+| `schema` | `FeatureSchema` | Describes `df`'s columns (e.g. from `get_schema`). |
+| `complexity` | `Complexity` | Which rung of `LADDERS` to train at. Default `Complexity.MODERATE`. |
+| `feature_names` | `list[str] \| None` | Subset of `schema.features` to train on; omit for all. |
+| `task` | `str` | `"classification"`, `"regression"`, or `"auto"` (inferred from `target`). |
+| `test_size` | `float` | Fraction of data held out to compute fidelity metrics. |
+
+**Returns** `TrainedChallenger` — a dataclass with `pipeline` (the fitted scikit-learn `Pipeline`), `task`, `metrics`, `hyperparameters`, and `export` (a `SurrogateExport`, structurally identical to what `export_surrogate()` returns for a server-trained surrogate — score either one with the same `proxyml_core.export.predict_from_export`).
+
+```python
+from proxyml.local import train_challenger
+
+result = train_challenger(df, df.pop("approved"), schema, task="classification")
+print(result.metrics)  # {"f1": 0.91, "accuracy": 0.90}
+```
+
+---
+
+### `train_auto_challenger(data, target_col, *, immutable_cols=None, complexity=Complexity.MODERATE, feature_names=None, task="auto", test_size=0.2)`
+
+Convenience wrapper around `get_schema()` + `train_challenger()` — loads `data`, infers a schema, and trains in one call. This only automates schema inference and the feature/target column split; it does not search across `LADDERS` for the best-fitting rung — `complexity` still defaults to `Complexity.MODERATE` and remains overridable.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `data` | `str \| Path \| pd.DataFrame` | A CSV path, or an already-loaded DataFrame, containing both the feature columns and `target_col`. |
+| `target_col` | `str` | Name of the column to train against. |
+| `immutable_cols` | `list[str] \| None` | Passed through to `get_schema()`. |
+| `complexity` | `Complexity` | Which rung of `LADDERS` to train at. |
+| `feature_names` | `list[str] \| None` | Subset of feature columns to train on; omit for all. |
+| `task` | `str` | `"classification"`, `"regression"`, or `"auto"`. |
+| `test_size` | `float` | Fraction of data held out to compute fidelity metrics. |
+
+**Returns** `TrainedChallenger` — same as `train_challenger`.
+
+```python
+from proxyml.local import train_auto_challenger
+
+result = train_auto_challenger("data.csv", "approved", task="classification")
+```
+
+---
+
+### `Complexity`, `Rung`, `LADDERS`
+
+`Complexity` is a 3-member enum (`SIMPLE`, `MODERATE`, `FLEXIBLE`) selecting how strongly-regularized the trained model is. `LADDERS` maps each `Complexity` to a `Rung` (a small dataclass describing how the classifier/regressor is built at that rung).
+
+`Complexity.MODERATE` matches the server's own default surrogate exactly — it's the baseline rung, not a separate model family. `SIMPLE` biases toward fewer effectively-nonzero coefficients (stronger regularization); `FLEXIBLE` searches a wider regularization grid for a closer per-sample fit. All three rungs stay within `LogisticRegressionCV`/`RidgeCV` — there are no tree/ensemble models to choose between, so results stay explainable by the same closed-form coefficient math the server uses.
+
+```python
+from proxyml.local import Complexity, LADDERS
+
+print(LADDERS[Complexity.SIMPLE].description)
+```
 
 ---
 

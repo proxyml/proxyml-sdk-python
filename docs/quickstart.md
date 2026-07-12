@@ -25,9 +25,11 @@ SCHEMA_NAME = "my_schema"
 # Mark features that should not be changed in counterfactuals
 schema = get_schema(df, immutable_cols=["age", "gender"])
 
-# Review and adjust the schema before uploading
-# Integer columns default to `count` type — change to `categorical_ordinal`
-# for ordered categories like ratings or class labels
+# Review and adjust before uploading — get_schema() returns a FeatureSchema;
+# schema.features is a list of typed Feature objects (ContinuousFeature,
+# CategoricalFeature, CountFeature, ...). Integer columns default to
+# CountFeature — swap in a CategoricalOrdinalFeature/NumericOrdinalFeature
+# for ordered categories like ratings or class labels.
 print(schema)
 
 # Upload to ProxyML
@@ -36,14 +38,14 @@ put_schema(schema, name=SCHEMA_NAME)
 
 The schema is auto-generated from column dtypes:
 
-| dtype | Schema type | Notes |
+| dtype | Feature type | Notes |
 |---|---|---|
-| `float` | `continuous` | mean, std, min, max |
-| `int` | `count` | Poisson lambda, max |
-| `bool` | `categorical` | true/false frequencies |
-| `object` | `categorical` | category frequencies |
+| `float` | `ContinuousFeature` | mean, std, min, max |
+| `int` | `CountFeature` | Poisson lambda, max |
+| `bool` | `CategoricalFeature` | true/false frequencies |
+| `object` | `CategoricalFeature` | category frequencies |
 
-Change `count` to `categorical_ordinal` for ordered integers (ratings, labels).
+Construct a `CategoricalOrdinalFeature`/`NumericOrdinalFeature` manually for ordered integers (ratings, labels).
 
 ## Step 2 — Synthesize Training Data
 
@@ -228,6 +230,30 @@ update_model("<uuid>", name="prod-v3", comments="retrained on May data")
 # Delete a specific version
 delete_model("<uuid>")
 ```
+
+---
+
+## Local Training
+
+Everything above trains server-side. `proxyml.local` (requires `pip install 'proxyml[local]'`) trains a **challenger** model in-process instead — no round-trip to the API. `target` can be a black box's predictions (training a surrogate/explainer, same as above) or real ground-truth labels (training a genuine challenger to compare against a champion model on real outcomes).
+
+```python
+from proxyml.local import train_auto_challenger
+
+# data.csv already contains the feature columns plus a "approved" target column
+result = train_auto_challenger("data.csv", "approved", task="classification")
+print(result.metrics)  # {"f1": 0.91, "accuracy": 0.90}
+```
+
+`result.export` is a `SurrogateExport` — structurally identical to what `export_surrogate()` returns for a server-trained surrogate, so you can score it locally with zero sklearn:
+
+```python
+from proxyml_core.export import predict_from_export
+
+prediction = predict_from_export(result.export, sample={"age": 42, "income": 55000})
+```
+
+If you already have a `FeatureSchema` and want more control over the feature/target split, use `train_challenger(df, target, schema)` directly instead of `train_auto_challenger`. Both default to `Complexity.MODERATE` — which matches the server's own default surrogate — but accept `complexity=Complexity.SIMPLE` or `Complexity.FLEXIBLE` for stronger or weaker regularization.
 
 ---
 

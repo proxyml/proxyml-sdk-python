@@ -17,6 +17,12 @@ statistics are uploaded — your data stays yours.
 pip install proxyml
 ```
 
+Want to train a challenger model locally, with no round-trip to the API? Install the `local` extra (adds scikit-learn and scipy):
+
+```bash
+pip install 'proxyml[local]'
+```
+
 ## Setup
 
 ProxyML requires an API key. Set it as an environment variable before importing the package:
@@ -84,6 +90,8 @@ See [`docs/quickstart.md`](docs/quickstart.md) for a full walkthrough and [`docs
 
 **Surrogate model** — A fast, interpretable model trained to approximate your black-box model's behavior on synthetic data. Once trained, it can be queried directly via the ProxyML API.
 
+**Challenger model** — Trained the same way as a surrogate, but locally (`proxyml.local`, no round-trip to the API) and against either real ground-truth labels (a genuine challenger to compare against a champion model) or a black box's predictions (a surrogate/explainer). Its export is structurally identical to a server-trained surrogate's, so the two can be compared and scored with the exact same arithmetic.
+
 **Counterfactual explanation** — Given a prediction, a counterfactual is the minimal change to input features that would produce a different prediction. It answers: *"What would have to be different for the outcome to change?"*
 
 **Schema** — Describes the statistical properties of each feature (type, range, distribution). Used to generate realistic synthetic data and constrain counterfactual search.
@@ -92,13 +100,17 @@ See [`docs/quickstart.md`](docs/quickstart.md) for a full walkthrough and [`docs
 
 | Function | Description |
 |---|---|
-| `get_schema(df, immutable_cols)` | Generate a schema dict from a DataFrame |
+| `get_schema(df, immutable_cols)` | Infer a `FeatureSchema` from a DataFrame |
 | `put_schema(schema, name)` | Upload a schema to the API under a name |
 | `synthesize_data(num_points, sample, as_df, schema_name)` | Generate synthetic data points |
 | `train_surrogate(samples, predictions, feature_names, task, test_size, schema_name)` | Train a surrogate model |
+| `train_auto_surrogate(data, target_col, ...)` | Load data + train a surrogate in one call, skipping synthesis |
+| `export_surrogate(version)` | Export a surrogate for offline scoring via `predict_from_export` |
 | `predict(sample, version)` | Score a single sample with the surrogate model |
 | `find_counterfactual(sample, target, ...)` | Find a counterfactual for a given sample |
 | `interpret_counterfactual(sample, counterfactual, ...)` | Generate a human-readable explanation |
+| `proxyml.local.train_challenger(df, target, schema, ...)` | Train a challenger model locally — no API round-trip (`pip install 'proxyml[local]'`) |
+| `proxyml.local.train_auto_challenger(data, target_col, ...)` | Load data + train a local challenger in one call |
 
 Full documentation: [`docs/api.md`](docs/api.md)
 

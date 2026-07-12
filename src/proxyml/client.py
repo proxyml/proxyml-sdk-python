@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import orjson
@@ -8,6 +9,7 @@ import pandas as pd
 import requests
 from pandas.api.types import is_float_dtype, is_integer_dtype
 
+from proxyml.schema_builder import get_schema
 from proxyml_core.export import SurrogateExport
 from proxyml_core.schema import FeatureSchema
 
@@ -327,6 +329,67 @@ def train_surrogate(
         r.text
     )
     return None
+
+
+def train_auto_surrogate(
+        data: str | Path | pd.DataFrame,
+        target_col: str,
+        feature_names: list[str] | None = None,
+        task: str = 'auto',
+        test_size: float = 0.2,
+        *,
+        schema_name: str,
+        immutable_cols: list[str] | None = None,
+        name: str | None = None,
+        comments: str | None = None,
+    ) -> Any:
+    """
+    Loads data that already contains samples and a target/prediction column,
+    infers and uploads a feature schema, and trains a server-side surrogate
+    against target_col — all in one call.
+
+    Assumes `data` already contains the samples you want to train on and the
+    value to predict for each one (real ground truth or a black box's
+    predictions), so it skips synthesize_data() entirely. If you need the
+    server to generate synthetic samples for you to score first, use
+    synthesize_data() and train_surrogate() directly instead (see
+    examples/basic_usage.py).
+
+    Args:
+        data (str | Path | DataFrame): a CSV path, or an already-loaded DataFrame,
+            containing both the feature columns and target_col.
+        target_col (str): name of the column to train against.
+        feature_names (list): subset of feature columns to train on; omit for all.
+            (The full sample width is always uploaded — feature_names only tells
+            the surrogate which columns to actually fit on.)
+        task (str): specifies the modeling task, one of "classification," "regression," or "auto".
+        test_size (float): fraction of the data to set aside for test data, defaults to 0.2.
+        schema_name (str): name to store the inferred schema under.
+        immutable_cols (list): passed through to get_schema().
+        name (str): an optional name for the surrogate.
+        comments (str): an optional comment string for the surrogate.
+    Returns:
+        JSON object denoting surrogate training result, or None if schema upload
+        or training failed.
+    """
+    df = data if isinstance(data, pd.DataFrame) else pd.read_csv(data)
+    target = df[target_col]
+    features_df = df.drop(columns=[target_col])
+
+    schema = get_schema(features_df, immutable_cols=immutable_cols)
+    if put_schema(schema, name=schema_name) is None:
+        return None
+
+    return train_surrogate(
+        samples=features_df.values.tolist(),
+        predictions=target.tolist(),
+        feature_names=feature_names,
+        task=task,
+        test_size=test_size,
+        schema_name=schema_name,
+        name=name,
+        comments=comments,
+    )
 
 
 def export_surrogate(version: str) -> SurrogateExport | None:

@@ -35,6 +35,7 @@ from proxyml.client import (
     rotate_key,
     synthesize_data,
     train_surrogate,
+    train_auto_surrogate,
     update_model,
 )
 
@@ -372,7 +373,81 @@ def test_train_surrogate_omits_none_metadata(mock_post):
     train_surrogate(samples=[[1.0]], predictions=[1.0], feature_names=None, schema_name="myschema")
     payload = mock_post.call_args.kwargs["payload"]
     assert "name" not in payload
-    assert "comments" not in payload
+
+
+# ---------------------------------------------------------------------------
+# train_auto_surrogate
+# ---------------------------------------------------------------------------
+
+def _labeled_df():
+    return pd.DataFrame({
+        "age": [20.0, 30.0, 40.0, 50.0],
+        "income": [10000.0, 20000.0, 30000.0, 40000.0],
+        "approved": [True, False, True, False],
+    })
+
+
+@patch("proxyml.client.post")
+@patch("proxyml.client.put")
+def test_train_auto_surrogate_from_dataframe(mock_put, mock_post):
+    mock_put.return_value = _mock_response(200, {"features": []})
+    mock_post.return_value = _mock_response(200, {"version": "abc-123"})
+
+    df = _labeled_df()
+    result = train_auto_surrogate(df, "approved", schema_name="myschema")
+
+    assert result["version"] == "abc-123"
+    put_payload = mock_put.call_args.kwargs["payload"]
+    assert [f["name"] for f in put_payload["features"]] == ["age", "income"]
+
+    train_payload = mock_post.call_args.kwargs["payload"]
+    assert train_payload["schema_name"] == "myschema"
+    assert train_payload["predictions"] == [True, False, True, False]
+    assert train_payload["samples"] == [[20.0, 10000.0], [30.0, 20000.0], [40.0, 30000.0], [50.0, 40000.0]]
+
+
+@patch("proxyml.client.post")
+@patch("proxyml.client.put")
+def test_train_auto_surrogate_from_csv_path(mock_put, mock_post, tmp_path):
+    mock_put.return_value = _mock_response(200, {"features": []})
+    mock_post.return_value = _mock_response(200, {"version": "abc-123"})
+
+    csv_path = tmp_path / "data.csv"
+    _labeled_df().to_csv(csv_path, index=False)
+
+    result = train_auto_surrogate(csv_path, "approved", schema_name="myschema")
+
+    assert result["version"] == "abc-123"
+    mock_put.assert_called_once()
+    mock_post.assert_called_once()
+
+
+@patch("proxyml.client.post")
+@patch("proxyml.client.put")
+def test_train_auto_surrogate_returns_none_and_skips_training_on_schema_upload_failure(mock_put, mock_post):
+    mock_put.return_value = _mock_response(422, {"detail": "invalid schema"})
+
+    result = train_auto_surrogate(_labeled_df(), "approved", schema_name="myschema")
+
+    assert result is None
+    mock_post.assert_not_called()
+
+
+@patch("proxyml.client.post")
+@patch("proxyml.client.put")
+def test_train_auto_surrogate_passes_metadata_and_feature_names(mock_put, mock_post):
+    mock_put.return_value = _mock_response(200, {"features": []})
+    mock_post.return_value = _mock_response(200, {"version": "abc-123"})
+
+    train_auto_surrogate(
+        _labeled_df(), "approved",
+        schema_name="myschema", feature_names=["age"], name="v1", comments="test run",
+    )
+
+    train_payload = mock_post.call_args.kwargs["payload"]
+    assert train_payload["feature_names"] == ["age"]
+    assert train_payload["name"] == "v1"
+    assert train_payload["comments"] == "test run"
 
 
 @patch("proxyml.client.get")

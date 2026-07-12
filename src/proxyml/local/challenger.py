@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Literal
 
 import numpy as np
@@ -22,6 +23,7 @@ from sklearn.metrics import f1_score, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
+from proxyml.schema_builder import get_schema
 from proxyml_core.export import SurrogateExport
 from proxyml_core.modeling.estimators import (
     binarize_if_probabilities,
@@ -197,4 +199,49 @@ def train_challenger(
         metrics=metrics,
         hyperparameters=hyperparameters,
         export=export,
+    )
+
+
+def train_auto_challenger(
+    data: str | Path | pd.DataFrame,
+    target_col: str,
+    *,
+    immutable_cols: list[str] | None = None,
+    complexity: Complexity = Complexity.MODERATE,
+    feature_names: list[str] | None = None,
+    task: Literal["classification", "regression", "auto"] = "auto",
+    test_size: float = 0.2,
+) -> TrainedChallenger:
+    """Load data, infer a schema, and train a linear challenger in one call.
+
+    Convenience wrapper around ``get_schema()`` + ``train_challenger()`` — it
+    only automates schema inference and the feature/target column split,
+    nothing more. ``complexity`` still defaults to ``Complexity.MODERATE`` and
+    remains overridable; this does not search across ``LADDERS`` to find the
+    best-fitting rung.
+
+    Args:
+        data: a CSV path, or an already-loaded DataFrame containing both the
+            feature columns and ``target_col``.
+        target_col: name of the column to train against — either real
+            ground-truth labels or a black box's predictions.
+        immutable_cols: passed through to ``get_schema()``.
+        complexity: which rung of ``LADDERS`` to train at.
+        feature_names: subset of feature columns to train on; omit for all.
+        task: "classification", "regression", or "auto" to infer from ``target_col``.
+        test_size: fraction of data held out to compute fidelity metrics.
+    """
+    df = data if isinstance(data, pd.DataFrame) else pd.read_csv(data)
+    target = df[target_col]
+    features_df = df.drop(columns=[target_col])
+
+    schema = get_schema(features_df, immutable_cols=immutable_cols)
+    return train_challenger(
+        features_df,
+        target,
+        schema,
+        complexity=complexity,
+        feature_names=feature_names,
+        task=task,
+        test_size=test_size,
     )

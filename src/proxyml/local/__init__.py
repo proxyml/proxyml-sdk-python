@@ -5,6 +5,20 @@ except ImportError as exc:
         "Local challenger training requires the 'local' extra: pip install 'proxyml[local]'"
     ) from exc
 
-from proxyml.local.challenger import LADDERS, Complexity, Rung, TrainedChallenger, train_challenger
+from proxyml.local.challenger import (
+    LADDERS,
+    Complexity,
+    Rung,
+    TrainedChallenger,
+    train_auto_challenger,
+    train_challenger,
+)
 
-__all__ = ["train_challenger", "Complexity", "Rung", "TrainedChallenger", "LADDERS"]
+__all__ = [
+    "train_challenger",
+    "train_auto_challenger",
+    "Complexity",
+    "Rung",
+    "TrainedChallenger",
+    "LADDERS",
+]

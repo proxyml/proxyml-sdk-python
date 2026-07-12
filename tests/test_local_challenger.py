@@ -2,7 +2,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from proxyml.local import Complexity, LADDERS, TrainedChallenger, train_challenger
+from proxyml.local import (
+    Complexity,
+    LADDERS,
+    TrainedChallenger,
+    train_auto_challenger,
+    train_challenger,
+)
+from proxyml.schema_builder import get_schema
 from proxyml_core.export import predict_from_export
 from proxyml_core.schema import CategoricalFeature, ContinuousFeature, FeatureSchema
 
@@ -88,3 +95,61 @@ def test_train_challenger_feature_subset():
 
     result = train_challenger(df, target, schema, feature_names=["age"], task="regression")
     assert [f.name for f in result.export.features] == ["age"]
+
+
+def _labeled_df(n=200, seed=5):
+    rng = np.random.RandomState(seed)
+    df = _df(n=n, seed=seed)
+    df["approved"] = (df["age"] * 0.5 + df["income"] * 0.0001) > df["age"].median() * 0.5
+    return df
+
+
+def test_train_auto_challenger_from_dataframe():
+    df = _labeled_df()
+    result = train_auto_challenger(df, "approved", task="classification")
+
+    assert isinstance(result, TrainedChallenger)
+    assert result.task == "classification"
+    assert {f.name for f in result.export.features} == {"age", "income"}
+
+
+def test_train_auto_challenger_from_csv_path(tmp_path):
+    df = _labeled_df(seed=6)
+    csv_path = tmp_path / "data.csv"
+    df.to_csv(csv_path, index=False)
+
+    result = train_auto_challenger(csv_path, "approved", task="classification")
+
+    assert isinstance(result, TrainedChallenger)
+    assert {f.name for f in result.export.features} == {"age", "income"}
+
+
+def test_train_auto_challenger_matches_manual_schema_and_train():
+    df = _labeled_df(seed=7)
+    target = df["approved"]
+    features_df = df.drop(columns=["approved"])
+
+    manual_schema = get_schema(features_df)
+    manual_result = train_challenger(features_df, target, manual_schema, task="classification")
+    auto_result = train_auto_challenger(df, "approved", task="classification")
+
+    sample = {"age": features_df["age"].iloc[0], "income": features_df["income"].iloc[0]}
+    assert predict_from_export(manual_result.export, sample) == predict_from_export(
+        auto_result.export, sample
+    )
+
+
+def test_train_auto_challenger_passes_immutable_cols_to_get_schema():
+    from unittest.mock import patch
+
+    df = _labeled_df(seed=8)
+    features_df = df.drop(columns=["approved"])
+
+    with patch("proxyml.local.challenger.get_schema", wraps=get_schema) as mock_get_schema:
+        train_auto_challenger(df, "approved", task="classification", immutable_cols=["age"])
+
+    mock_get_schema.assert_called_once()
+    called_df = mock_get_schema.call_args.args[0]
+    called_kwargs = mock_get_schema.call_args.kwargs
+    assert list(called_df.columns) == list(features_df.columns)
+    assert called_kwargs["immutable_cols"] == ["age"]

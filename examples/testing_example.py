@@ -32,16 +32,18 @@ production_model = GradientBoostingRegressor(n_estimators=100, random_state=42)
 production_model.fit(df.values, y)
 
 # Setting up our surrogate in ProxyML
-problem_name = "California Housing Regressor Validator"
+PROBLEM_NAME = "California Housing Regressor Validator"
+# Schema/model names are used in URL paths and must match ^[a-zA-Z0-9_.\-]+$ — no spaces.
+SCHEMA_NAME = "california_housing_regressor_validator"
 
 # Upload data schema
 print("\nGenerating and uploading data schema...")
 schema = get_schema(df, immutable_cols = ['Latitude', 'Longitude', 'HouseAge'])
-proxyml.put_schema(schema, name=problem_name)
+proxyml.put_schema(schema, name=SCHEMA_NAME)
 
 # Generate synthetic training data
 print("\nGenerating surrogate training data...")
-synth_df = proxyml.synthesize_data(num_points=500, schema_name=problem_name)
+synth_df = proxyml.synthesize_data(num_points=500, schema_name=SCHEMA_NAME)
 predictions = production_model.predict(synth_df.values).tolist()
 
 # Train surrogate
@@ -52,8 +54,8 @@ train_result = proxyml.train_surrogate(
     feature_names=list(synth_df.columns),
     task="auto",  # or "regression"
     test_size=0.2,
-    name=problem_name,
-    schema_name=problem_name,
+    name=PROBLEM_NAME,
+    schema_name=SCHEMA_NAME,
     comments="Validates agreement between expected predictions and actual predictions"
 )
 
@@ -82,6 +84,6 @@ development_model.fit(df.values, y)
 print("\nValidating development model against expected production model results...")
 test_model_predictions_within_expected_range(
     dev_model=development_model,
-    schema_name=problem_name,
+    schema_name=SCHEMA_NAME,
     surrogate_version=train_result['version']
 )

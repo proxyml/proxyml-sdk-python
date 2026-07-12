@@ -8,6 +8,9 @@ import pandas as pd
 import requests
 from pandas.api.types import is_float_dtype, is_integer_dtype
 
+from proxyml_core.export import SurrogateExport
+from proxyml_core.schema import FeatureSchema
+
 logger = logging.getLogger(__name__)
 
 _BOOL_STRINGS = {"true", "false"}
@@ -156,20 +159,20 @@ def delete(endpoint: str) -> requests.models.Response | _ErrorResponse:
         return _ErrorResponse()
 
 
-def put_schema(schema: dict, name: str) -> Any:
+def put_schema(schema: FeatureSchema, name: str) -> FeatureSchema | None:
     """
     Uploads a data schema.
 
     Args:
-        schema (dict): data schema object
+        schema (FeatureSchema): data schema object, e.g. from get_schema()
         name (str): name for the schema.
     Returns:
-        API response JSON object, or None if the return code was not 200.
+        The stored FeatureSchema, or None if the return code was not 200.
     """
-    r = put(endpoint=f'/schema/{name}', payload=schema)
+    r = put(endpoint=f'/schema/{name}', payload=schema.to_dict())
     if r.status_code == 200:
         logger.info("Schema '%s' uploaded successfully", name)
-        return r.json()
+        return FeatureSchema.from_dict(r.json())
     logger.error(
         "Schema upload failed with status %s: %s",
         r.status_code,
@@ -178,11 +181,14 @@ def put_schema(schema: dict, name: str) -> Any:
     return None
 
 
-def fetch_schema(name: str) -> dict | None:
+def fetch_schema(name: str) -> FeatureSchema | None:
     """Retrieve a stored feature schema by name."""
     r = get(endpoint=f'/schema/{name}', params={})
     if r.status_code == 200:
-        return r.json()
+        payload = r.json()
+        if payload.get('schema_warning'):
+            logger.warning(payload['schema_warning'])
+        return FeatureSchema.from_dict(payload)
     logger.error(
         "Fetch schema failed with status %s: %s",
         r.status_code,
@@ -323,22 +329,23 @@ def train_surrogate(
     return None
 
 
-def export_surrogate(version: str) -> Any:
+def export_surrogate(version: str) -> SurrogateExport | None:
     """
-    Exports a surrogate model to JSON e.g., classes, intercept, per_class_intercepts, features, scalers, etc.; everything required
-    to reconstruct the surrogate.
-    
+    Exports a surrogate model — classes, intercept, per_class_intercepts, features,
+    scalers, etc.; everything required to reconstruct the surrogate. Score it locally,
+    with zero sklearn, via proxyml_core.export.predict_from_export(export, sample).
+
     Args:
         version (str): name of the surrogate to export
     Returns:
-        JSON object representing the surrogate, or None if an error occurred. 
+        SurrogateExport, or None if an error occurred.
     """
     r = get(endpoint=f'/surrogate/models/{version}/export', params=dict())
     if r.status_code == 200:
-        return r.json()
-    logger.error(                                                                                                                                                            
-        "Surrogate export failed (version=%s, status=%s): %s",                                                                                                             
-        version, r.status_code, r.text,                                                                                                                                      
+        return SurrogateExport.from_dict(r.json())
+    logger.error(
+        "Surrogate export failed (version=%s, status=%s): %s",
+        version, r.status_code, r.text,
     )
     return None
 
@@ -560,18 +567,21 @@ def get_model_summary(version: str | None = None) -> Any:
     return None
 
 
-def get_model_schema(version: str) -> Any:
+def get_model_schema(version: str) -> FeatureSchema | None:
     """
     Retrieves the schema associated with a particular surrogate.
-    
+
     Args:
         version (str): name of the surrogate model.
     Returns:
-        JSON object representation of the model's schema, or None if an error occurred.
+        The model's FeatureSchema, or None if an error occurred.
     """
     r = get(endpoint=f'/surrogate/models/{version}/schema', params=dict())
     if r.status_code == 200:
-        return r.json()
+        payload = r.json()
+        if payload.get('schema_warning'):
+            logger.warning(payload['schema_warning'])
+        return FeatureSchema.from_dict(payload)
     logger.error(
         "Schema retrieval failed with status %s: %s",
         r.status_code,

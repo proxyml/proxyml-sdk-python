@@ -28,7 +28,7 @@ black_box.fit(df.values, y)
 # 2. Generate and upload a schema
 # ---------------------------------------------------------------------------
 schema = get_schema(df, immutable_cols=None)
-print("\nSchema generated. Features:", [f["name"] for f in schema["features"]])
+print("\nSchema generated. Features:", [f.name for f in schema.features])
 
 result = proxyml.put_schema(schema, name="breast_cancer")
 print("\nSchema upload result:", result)

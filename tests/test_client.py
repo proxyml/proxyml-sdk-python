@@ -5,6 +5,9 @@ import pandas as pd
 import pytest
 import requests
 
+from proxyml_core.export import SurrogateExport
+from proxyml_core.schema import FeatureSchema
+
 from proxyml.client import (
     _cast_column,
     _base_url,
@@ -203,22 +206,22 @@ def _mock_response(status_code, json_body):
 @patch("proxyml.client.put")
 def test_put_schema_success(mock_put):
     mock_put.return_value = _mock_response(200, {"features": []})
-    result = put_schema({"features": []}, name="myschema")
-    assert result == {"features": []}
+    result = put_schema(FeatureSchema(features=[]), name="myschema")
+    assert result == FeatureSchema(features=[])
     mock_put.assert_called_once_with(endpoint="/schema/myschema", payload={"features": []})
 
 
 @patch("proxyml.client.put")
 def test_put_schema_named(mock_put):
     mock_put.return_value = _mock_response(200, {"features": []})
-    put_schema({"features": []}, name="credit")
+    put_schema(FeatureSchema(features=[]), name="credit")
     mock_put.assert_called_once_with(endpoint="/schema/credit", payload={"features": []})
 
 
 @patch("proxyml.client.put")
 def test_put_schema_failure(mock_put):
     mock_put.return_value = _mock_response(422, {"detail": "invalid"})
-    result = put_schema({"features": []}, name="myschema")
+    result = put_schema(FeatureSchema(features=[]), name="myschema")
     assert result is None
 
 
@@ -228,9 +231,11 @@ def test_put_schema_failure(mock_put):
 
 @patch("proxyml.client.get")
 def test_fetch_schema_success(mock_get):
-    mock_get.return_value = _mock_response(200, {"features": [{"type": "continuous", "name": "age"}]})
+    mock_get.return_value = _mock_response(200, {"features": [
+        {"type": "continuous", "name": "age", "mean": 35.0, "std": 10.0, "min": 18.0, "max": 90.0}
+    ]})
     result = fetch_schema(name="myschema")
-    assert result["features"][0]["name"] == "age"
+    assert result.features[0].name == "age"
     mock_get.assert_called_once_with(endpoint="/schema/myschema", params={})
 
 
@@ -630,11 +635,34 @@ def test_rotate_key_failure_returns_none(mock_post):
 
 _EXPORT_RESPONSE = {
     "version": "abc-123",
-    "classes": [0, 1],
-    "intercept": [0.5],
+    "task": "regression",
+    "trained_at": "2026-01-01T00:00:00",
+    "schema_name": "default",
+    "name": None,
+    "comments": None,
+    "metrics": {"r2": 0.9},
+    "hyperparameters": None,
+    "run_id": "run-1",
+    "classes": None,
+    "intercept": 0.5,
     "per_class_intercepts": None,
-    "features": [{"name": "age", "type": "continuous"}],
-    "scalers": {"age": {"mean": 35.0, "scale": 10.0}},
+    "features": [
+        {
+            "name": "age",
+            "type": "continuous",
+            "scaler_mean": 35.0,
+            "scaler_scale": 10.0,
+            "ohe_categories": None,
+            "ordinal_categories": None,
+            "coefficient": 1.2,
+            "category_coefficients": None,
+            "per_class_coefficients": None,
+        }
+    ],
+    "schema_definition": [],
+    "schema_warning": None,
+    "note": "some note",
+    "export_schema_version": 1,
 }
 
 
@@ -642,7 +670,8 @@ _EXPORT_RESPONSE = {
 def test_export_surrogate_success(mock_get):
     mock_get.return_value = _mock_response(200, _EXPORT_RESPONSE)
     result = export_surrogate(version="abc-123")
-    assert result == _EXPORT_RESPONSE
+    assert result == SurrogateExport.from_dict(_EXPORT_RESPONSE)
+    assert result.features[0].name == "age"
 
 
 @patch("proxyml.client.get")
@@ -791,7 +820,7 @@ _MODEL_SCHEMA_RESPONSE = {
 def test_get_model_schema_success(mock_get):
     mock_get.return_value = _mock_response(200, _MODEL_SCHEMA_RESPONSE)
     result = get_model_schema(version="abc-123")
-    assert result == _MODEL_SCHEMA_RESPONSE
+    assert result == FeatureSchema.from_dict(_MODEL_SCHEMA_RESPONSE)
     mock_get.assert_called_once_with(endpoint="/surrogate/models/abc-123/schema", params={})
 
 

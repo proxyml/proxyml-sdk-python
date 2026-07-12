@@ -13,6 +13,7 @@ from catboost import CatBoostRegressor, Pool
 
 import proxyml
 from proxyml import get_schema
+from proxyml_core.export import predict_from_export
 
 # Fetch the Ames housing dataset
 housing = fetch_openml(name="house_prices", as_frame=True, parser='auto')
@@ -165,35 +166,11 @@ print("\nSurrogate feature importance:", proxyml.get_feature_importances(version
 
 exported_explanation_surrogate = proxyml.export_surrogate(version=explanation_train_result['version'])
 
-
-def predict_from_export(export: dict, sample: dict) -> float:
-    """
-    Reconstruct surrogate predictions from export JSON alone.
-    No ProxyML SDK or API required.
-    """
-    score = export['intercept']
-    
-    for feature in export['features']:
-        name = feature['name']
-        value = sample.get(name)
-        
-        if value is None:
-            continue
-            
-        if feature['type'] == 'continuous':
-            # x_scaled = (x - mean) / scale
-            x_scaled = (float(value) - feature['scaler_mean']) / feature['scaler_scale']
-            score += feature['coefficient'] * x_scaled
-            
-        elif feature['type'] == 'categorical':
-            # one-hot encoded — find matching category and apply its coefficient
-            categories = feature['ohe_categories']
-            coefficients = feature['category_coefficients']
-            if value in categories:
-                idx = categories.index(value)
-                score += coefficients[idx]
-    
-    return score
+# predict_from_export reconstructs surrogate predictions from the export alone —
+# no ProxyML SDK or API required, and no sklearn either (proxyml_core.export is
+# pure arithmetic). It handles every feature type the export can carry
+# (continuous, count, categorical, both ordinal types) and multiclass, not just
+# the continuous/categorical subset a hand-rolled version might cover.
 
 # verify against the API - get a sample of data and compare remote and local predictions
 sample = X_imputed.sample().to_dict(orient='records')[0]

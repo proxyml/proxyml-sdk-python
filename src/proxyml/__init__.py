@@ -24,12 +24,7 @@ from proxyml.client import (
     explain_local_batch,
     update_model,
 )
-from proxyml.schema import (
-    get_schema,
-    gen_continuous_schema,
-    gen_categorical_schema,
-    gen_discrete_schema,
-)
+from proxyml.schema_builder import get_schema
 
 __all__ = [
     "health_check",
@@ -57,7 +52,4 @@ __all__ = [
     "explain_local_batch",
     "update_model",
     "get_schema",
-    "gen_continuous_schema",
-    "gen_categorical_schema",
-    "gen_discrete_schema",
 ]

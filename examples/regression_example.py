@@ -29,7 +29,7 @@ black_box.fit(df.values, y)
 # ---------------------------------------------------------------------------
 
 schema = get_schema(df, immutable_cols = ['Latitude', 'Longitude', 'HouseAge'])
-print("\nSchema generated. Features:", [f["name"] for f in schema["features"]])
+print("\nSchema generated. Features:", [f.name for f in schema.features])
 
 result = proxyml.put_schema(schema, name="housing")
 print("\nSchema upload result:", result)

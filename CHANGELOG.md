@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-18
+
+### Added
+- `proxyml.local.score_champion(labels, predictions, *, task)` — scores a
+  champion model's predictions against real labels using the exact same
+  scoring code as `train_challenger()`'s internal fidelity metrics, so the
+  two are directly comparable in a champion-vs-challenger report. Requires
+  `proxyml-core>=0.2` (adds `proxyml_core.modeling.scoring`).
+- `proxyml.__version__`, exposed via `importlib.metadata`.
+
+### Fixed
+- `train_challenger()` computed `hyperparameters` but never merged them into
+  `TrainedChallenger.export` — `export.hyperparameters` was silently `None`.
+  The export now carries both `hyperparameters` and `metrics`, matching what
+  a server-trained surrogate's export already includes.
+
 ## [0.3.0] - 2026-07-12
 
 ### Added

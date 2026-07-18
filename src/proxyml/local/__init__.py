@@ -10,6 +10,7 @@ from proxyml.local.challenger import (
     Complexity,
     Rung,
     TrainedChallenger,
+    score_champion,
     train_auto_challenger,
     train_challenger,
 )
@@ -17,6 +18,7 @@ from proxyml.local.challenger import (
 __all__ = [
     "train_challenger",
     "train_auto_challenger",
+    "score_champion",
     "Complexity",
     "Rung",
     "TrainedChallenger",

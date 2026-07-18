@@ -1,3 +1,5 @@
+from importlib.metadata import version as _pkg_version
+
 from proxyml.client import (
     health_check,
     put_schema,
@@ -27,7 +29,10 @@ from proxyml.client import (
 )
 from proxyml.schema_builder import get_schema
 
+__version__ = _pkg_version("proxyml")
+
 __all__ = [
+    "__version__",
     "health_check",
     "put_schema",
     "fetch_schema",

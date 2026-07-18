@@ -10,7 +10,7 @@ training target was real ground truth or a black box's predictions.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -19,7 +19,6 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator
 from sklearn.linear_model import LogisticRegressionCV, RidgeCV
-from sklearn.metrics import f1_score, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
@@ -34,6 +33,7 @@ from proxyml_core.modeling.estimators import (
 )
 from proxyml_core.modeling.extract import extract_export_data
 from proxyml_core.modeling.preprocess import build_preprocessor
+from proxyml_core.modeling.scoring import score_predictions
 from proxyml_core.schema import Feature, FeatureSchema
 
 
@@ -184,14 +184,10 @@ def train_challenger(
     hyperparameters = extract_hyperparameters(pipeline.named_steps["estimator"])
     y_pred = pipeline.predict(X_test)
 
-    metrics: dict[str, float] = {}
-    if classification:
-        metrics["f1"] = float(f1_score(y_test, y_pred, average="weighted", zero_division=0))
-        metrics["accuracy"] = float((y_test == y_pred).mean())
-    else:
-        metrics["r2"] = float(r2_score(y_test, y_pred))
+    metrics = score_predictions(y_test, y_pred, task=resolved_task)
 
     export = extract_export_data(pipeline, features, resolved_task)
+    export = replace(export, hyperparameters=hyperparameters, metrics=metrics)
 
     return TrainedChallenger(
         pipeline=pipeline,
@@ -200,6 +196,28 @@ def train_challenger(
         hyperparameters=hyperparameters,
         export=export,
     )
+
+
+def score_champion(
+    labels: np.ndarray | list,
+    predictions: np.ndarray | list,
+    *,
+    task: Literal["classification", "regression"],
+) -> dict[str, float]:
+    """Score a champion model's predictions against real labels, locally.
+
+    Uses the exact same scoring code as ``train_challenger()``'s internal
+    fidelity metrics, so ``champion_metrics`` and a paired
+    ``TrainedChallenger.metrics`` are computed identically — required for an
+    apples-to-apples champion-vs-challenger comparison. Pass the same task
+    the paired challenger resolved to (e.g. ``result.task``); there's no
+    ``task="auto"`` here, since letting the two resolve independently risks
+    them silently diverging.
+
+    Returns ``{"f1":..., "accuracy":...}`` for classification or ``{"r2":...}``
+    for regression — the same shape as ``TrainedChallenger.metrics``.
+    """
+    return score_predictions(np.asarray(labels), np.asarray(predictions), task=task)
 
 
 def train_auto_challenger(

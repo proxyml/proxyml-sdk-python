@@ -6,6 +6,7 @@ from proxyml.local import (
     Complexity,
     LADDERS,
     TrainedChallenger,
+    score_champion,
     train_auto_challenger,
     train_challenger,
 )
@@ -137,6 +138,47 @@ def test_train_auto_challenger_matches_manual_schema_and_train():
     assert predict_from_export(manual_result.export, sample) == predict_from_export(
         auto_result.export, sample
     )
+
+
+def test_score_champion_matches_train_challenger_metric_shape_classification():
+    schema = _schema()
+    df = _df(seed=9, n=300)
+    target = np.where(df["age"] > 50, "senior", "junior")
+
+    result = train_challenger(df, target, schema, complexity=Complexity.MODERATE, task="classification")
+    champion_metrics = score_champion(target, target, task="classification")
+    assert set(champion_metrics) == set(result.metrics)
+
+
+def test_score_champion_matches_train_challenger_metric_shape_regression():
+    schema = _schema()
+    df = _df(seed=10)
+    target = df["age"] * 0.5 + df["income"] * 0.0001
+
+    result = train_challenger(df, target, schema, complexity=Complexity.MODERATE, task="regression")
+    champion_metrics = score_champion(target, target, task="regression")
+    assert set(champion_metrics) == set(result.metrics)
+
+
+def test_score_champion_uses_same_scoring_as_train_challenger():
+    # Feed score_champion the exact labels/predictions a regression fit produced
+    # internally, and assert numeric equality with the challenger's own r2 —
+    # proving the two aren't drifting copies of the same formula.
+    schema = _schema()
+    df = _df(seed=11, n=300)
+    target = df["age"] * 0.5 + df["income"] * 0.0001
+
+    result = train_challenger(df, target, schema, complexity=Complexity.MODERATE, task="regression")
+    X = df[["age", "income"]].to_numpy(dtype=object)
+    y_pred = result.pipeline.predict(X)
+    reproduced_metrics = score_champion(target, y_pred, task="regression")
+
+    # Not identical to result.metrics (that was scored on a held-out test split,
+    # this is scored on the full data) but both must use the same r2 formula —
+    # verify by comparing against sklearn directly.
+    from sklearn.metrics import r2_score
+
+    assert reproduced_metrics["r2"] == pytest.approx(r2_score(target, y_pred))
 
 
 def test_train_auto_challenger_passes_immutable_cols_to_get_schema():

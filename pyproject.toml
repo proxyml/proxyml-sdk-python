@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "proxyml"
-version = "0.4.0"
+version = "0.4.1"
 description = "Python SDK for calling the ProxyML API"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -35,7 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 local = [
-    "proxyml-core[modeling]>=0.2",
+    "proxyml-core[modeling]>=0.2.1",
 ]
 dev = [
     "build",

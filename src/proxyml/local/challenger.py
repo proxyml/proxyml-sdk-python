@@ -60,6 +60,8 @@ def _simple_classifier() -> BaseEstimator:
         max_iter=500,
         cv=5,
         n_jobs=-1,
+        scoring="accuracy",
+        use_legacy_attributes=False,
     )
 
 
@@ -76,6 +78,8 @@ def _flexible_classifier() -> BaseEstimator:
         max_iter=1000,
         cv=5,
         n_jobs=-1,
+        scoring="accuracy",
+        use_legacy_attributes=False,
     )
 
 

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-07-18
+
+### Fixed
+- `train_challenger()`'s SIMPLE and FLEXIBLE classifier rungs now explicitly
+  set `scoring="accuracy"` and `use_legacy_attributes=False` on
+  `LogisticRegressionCV`, matching the MODERATE rung and silencing sklearn
+  `FutureWarning`s that fired on every classification fit.
+- Requires `proxyml-core>=0.2.1`, which fixes `binarize_if_probabilities()`
+  silently mis-binarizing NaN/infinite targets to `0` instead of raising.
+
 ## [0.4.0] - 2026-07-18
 
 ### Added

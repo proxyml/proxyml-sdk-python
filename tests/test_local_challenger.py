@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -61,6 +63,20 @@ def test_train_challenger_classification():
     assert result.task == "classification"
     assert "f1" in result.metrics
     assert result.export.classes is not None
+
+
+def test_train_challenger_classification_rungs_fit_without_sklearn_deprecation_warnings():
+    # scoring="accuracy" and use_legacy_attributes=False on the SIMPLE/FLEXIBLE
+    # classifiers pin today's sklearn defaults explicitly, matching what
+    # get_default_classifier() (the MODERATE rung) already does.
+    schema = _schema()
+    df = _df(seed=12, n=200)
+    target = np.where(df["age"] > 50, "senior", "junior")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        train_challenger(df, target, schema, complexity=Complexity.SIMPLE, task="classification")
+        train_challenger(df, target, schema, complexity=Complexity.FLEXIBLE, task="classification")
 
 
 def test_train_challenger_simple_rung_is_more_regularized_than_flexible():

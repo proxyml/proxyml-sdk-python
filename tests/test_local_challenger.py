@@ -9,6 +9,7 @@ from proxyml.local import (
     LADDERS,
     TrainedChallenger,
     score_champion,
+    to_challenger_upload,
     train_auto_challenger,
     train_challenger,
 )
@@ -195,6 +196,94 @@ def test_score_champion_uses_same_scoring_as_train_challenger():
     from sklearn.metrics import r2_score
 
     assert reproduced_metrics["r2"] == pytest.approx(r2_score(target, y_pred))
+
+
+def test_train_challenger_result_carries_complexity():
+    schema = _schema()
+    df = _df(seed=13)
+    target = df["age"] * 0.5 + df["income"] * 0.0001
+
+    result = train_challenger(df, target, schema, complexity=Complexity.FLEXIBLE, task="regression")
+
+    assert result.complexity is Complexity.FLEXIBLE
+
+
+def test_train_auto_challenger_result_carries_complexity():
+    df = _labeled_df(seed=14)
+    result = train_auto_challenger(df, "approved", task="classification", complexity=Complexity.SIMPLE)
+
+    assert result.complexity is Complexity.SIMPLE
+
+
+def test_to_challenger_upload_shape_without_champion_metrics():
+    schema = _schema()
+    df = _df(seed=15)
+    target = df["age"] * 0.5 + df["income"] * 0.0001
+    result = train_challenger(df, target, schema, complexity=Complexity.MODERATE, task="regression")
+
+    payload = to_challenger_upload(result, n_samples=40)
+
+    assert payload["export"] == result.export.to_dict()
+    assert payload["challenger_metrics"] == result.metrics
+    assert payload["n_samples"] == 40
+    assert payload["complexity"] == "moderate"
+    assert "champion_metrics" not in payload
+    assert isinstance(payload["sdk_version"], str) and payload["sdk_version"]
+    assert isinstance(payload["proxyml_core_version"], str) and payload["proxyml_core_version"]
+
+
+def test_to_challenger_upload_includes_champion_metrics_when_given():
+    schema = _schema()
+    df = _df(seed=16)
+    target = df["age"] * 0.5 + df["income"] * 0.0001
+    result = train_challenger(df, target, schema, complexity=Complexity.MODERATE, task="regression")
+    champion_metrics = score_champion(target, target, task="regression")
+
+    payload = to_challenger_upload(result, n_samples=40, champion_metrics=champion_metrics)
+
+    assert payload["champion_metrics"] == champion_metrics
+
+
+def test_to_challenger_upload_defaults_versions_to_installed_packages():
+    from importlib.metadata import version as pkg_version
+
+    schema = _schema()
+    df = _df(seed=17)
+    target = df["age"] * 0.5 + df["income"] * 0.0001
+    result = train_challenger(df, target, schema, task="regression")
+
+    payload = to_challenger_upload(result, n_samples=10)
+
+    assert payload["sdk_version"] == pkg_version("proxyml")
+    assert payload["proxyml_core_version"] == pkg_version("proxyml-core")
+
+
+def test_to_challenger_upload_allows_version_override():
+    schema = _schema()
+    df = _df(seed=18)
+    target = df["age"] * 0.5 + df["income"] * 0.0001
+    result = train_challenger(df, target, schema, task="regression")
+
+    payload = to_challenger_upload(
+        result, n_samples=10, sdk_version="9.9.9", proxyml_core_version="8.8.8"
+    )
+
+    assert payload["sdk_version"] == "9.9.9"
+    assert payload["proxyml_core_version"] == "8.8.8"
+
+
+def test_to_challenger_upload_payload_is_json_serializable():
+    import json
+
+    schema = _schema()
+    df = _df(seed=19, n=300)
+    target = np.where(df["age"] > 50, "senior", "junior")
+    result = train_challenger(df, target, schema, task="classification")
+    champion_metrics = score_champion(target, target, task="classification")
+
+    payload = to_challenger_upload(result, n_samples=300, champion_metrics=champion_metrics)
+
+    json.dumps(payload)  # must not raise
 
 
 def test_train_auto_challenger_passes_immutable_cols_to_get_schema():

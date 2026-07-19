@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import Enum
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, Callable, Literal
 
@@ -113,6 +114,7 @@ LADDERS: dict[Complexity, Rung] = {
 class TrainedChallenger:
     pipeline: Pipeline
     task: Literal["classification", "regression"]
+    complexity: Complexity
     metrics: dict[str, float]
     hyperparameters: dict[str, Any]
     export: SurrogateExport
@@ -196,6 +198,7 @@ def train_challenger(
     return TrainedChallenger(
         pipeline=pipeline,
         task=resolved_task,
+        complexity=complexity,
         metrics=metrics,
         hyperparameters=hyperparameters,
         export=export,
@@ -222,6 +225,63 @@ def score_champion(
     for regression — the same shape as ``TrainedChallenger.metrics``.
     """
     return score_predictions(np.asarray(labels), np.asarray(predictions), task=task)
+
+
+def to_challenger_upload(
+    result: TrainedChallenger,
+    *,
+    n_samples: int,
+    champion_metrics: dict[str, float] | None = None,
+    sdk_version: str | None = None,
+    proxyml_core_version: str | None = None,
+) -> dict[str, Any]:
+    """Assemble the JSON-serializable payload for a challenger upload.
+
+    Matches the shape ProxyML's dashboard/API expects at
+    ``POST /app/projects/{id}/challenger`` — handles the mechanical assembly
+    (serializing the export, stamping SDK/core versions, converting
+    ``complexity`` to a plain string) so callers don't have to hand-roll it.
+    The result is plain ``dict``/``str``/``float`` data, ready for
+    ``json.dump`` — upload it either by POSTing it directly, or by saving it
+    to a file and using the dashboard's "Upload challenger" button.
+
+    ``champion_metrics`` is optional: pass ``None`` (the default) to get a
+    self-contained export of the challenger alone — e.g. to save/share it
+    before you have a champion to compare against — and fill in
+    ``champion_metrics`` later. The upload endpoint itself still requires
+    ``champion_metrics`` at upload time; this function just doesn't force you
+    to have it up front.
+
+    Args:
+        result: output of ``train_challenger()``/``train_auto_challenger()``.
+        n_samples: size of the evaluation set both ``result.metrics`` and
+            ``champion_metrics`` were scored on. Not derived automatically —
+            ``TrainedChallenger`` doesn't retain its internal held-out split,
+            and ``champion_metrics`` typically comes from a separate
+            ``score_champion()`` call the two need to share, so the caller is
+            the only one who actually knows this number.
+        champion_metrics: the champion's real-world performance, from
+            ``score_champion()`` — same metric keys as ``result.metrics``.
+            Omit if you don't have it yet.
+        sdk_version: defaults to the installed ``proxyml`` version.
+        proxyml_core_version: defaults to the installed ``proxyml-core`` version.
+    """
+    if sdk_version is None:
+        sdk_version = _pkg_version("proxyml")
+    if proxyml_core_version is None:
+        proxyml_core_version = _pkg_version("proxyml-core")
+
+    payload: dict[str, Any] = {
+        "export": result.export.to_dict(),
+        "challenger_metrics": result.metrics,
+        "n_samples": n_samples,
+        "complexity": result.complexity.value,
+        "sdk_version": sdk_version,
+        "proxyml_core_version": proxyml_core_version,
+    }
+    if champion_metrics is not None:
+        payload["champion_metrics"] = champion_metrics
+    return payload
 
 
 def train_auto_challenger(

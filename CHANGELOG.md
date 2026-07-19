@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-19
+
+### Added
+- `proxyml.local.to_challenger_upload(result, *, n_samples, champion_metrics=None, sdk_version=None, proxyml_core_version=None)`
+  — assembles the JSON-serializable payload for
+  `POST /app/projects/{id}/challenger`, handling the mechanical housekeeping
+  (export serialization, SDK/core version stamping, complexity-as-a-string)
+  that was previously left to callers to hand-roll. `champion_metrics` is
+  optional, so this also works as a way to just export a challenger on its
+  own (e.g. to save/share before a champion comparison is available).
+- `TrainedChallenger.complexity` — the `Complexity` the challenger was
+  trained at is now retained on the result, needed by `to_challenger_upload`
+  and generally useful for anyone inspecting a `TrainedChallenger` after the
+  fact.
+- New example, `examples/challenger_export_example.py`, walking through
+  training a challenger, scoring a champion, and exporting the upload
+  payload end-to-end.
+
 ## [0.4.1] - 2026-07-18
 
 ### Fixed

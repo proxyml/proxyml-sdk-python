@@ -245,6 +245,19 @@ result = train_auto_challenger("data.csv", "approved", task="classification")
 print(result.metrics)  # {"f1": 0.91, "accuracy": 0.90}
 ```
 
+Rows with a missing `"approved"` value are dropped automatically before training — `result.n_samples_dropped_unlabeled` and `result.population_note` record how many, so that scope limitation is never silent.
+
+To compare against a champion model and produce an upload-ready payload for the dashboard, pass `champion_predictions` (one prediction per row of `data.csv`, same order — the champion is always scored against the exact same rows the challenger was, dropped rows and all):
+
+```python
+from proxyml.local import to_challenger_upload
+
+result = train_auto_challenger(
+    "data.csv", "approved", task="classification", champion_predictions=champion_preds,
+)
+payload = to_challenger_upload(result)  # n_samples/champion_metrics auto-derived
+```
+
 `result.export` is a `SurrogateExport` — structurally identical to what `export_surrogate()` returns for a server-trained surrogate, so you can score it locally with zero sklearn:
 
 ```python

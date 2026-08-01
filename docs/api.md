@@ -296,9 +296,11 @@ Retrieve the data schema a particular surrogate was trained against.
 
 Requires the `local` extra: `pip install 'proxyml[local]'` (adds scikit-learn and scipy). Everything below runs in-process — no API calls, no data leaves your machine.
 
-### `train_challenger(df, target, schema, *, complexity=Complexity.MODERATE, feature_names=None, task="auto", test_size=0.2)`
+### `train_challenger(df, target, schema, *, complexity=Complexity.MODERATE, feature_names=None, task="auto", test_size=0.2, target_name="target", champion_predictions=None)`
 
 Train a linear challenger model on `df` against `target`, locally. `target` can be real ground-truth labels (training a genuine challenger to compare against a champion model on real outcomes) or a black box's predictions (training a surrogate/explainer of that model) — the fit itself doesn't care which.
+
+Rows where `target` is missing (NaN/None) are dropped before training, the CV split, and champion scoring — never silently included. The drop count and a human-readable scope-limitation note are recorded on the result.
 
 **Parameters**
 
@@ -311,21 +313,26 @@ Train a linear challenger model on `df` against `target`, locally. `target` can 
 | `feature_names` | `list[str] \| None` | Subset of `schema.features` to train on; omit for all. |
 | `task` | `str` | `"classification"`, `"regression"`, or `"auto"` (inferred from `target`). |
 | `test_size` | `float` | Fraction of data held out to compute fidelity metrics. |
+| `target_name` | `str` | Human-readable name for `target`, used in `population_note`. Default `"target"`. |
+| `champion_predictions` | `np.ndarray \| list \| None` | A champion model's predictions, one per row of `df`/`target` (same order, pre-drop). If given, scored via `score_champion()` against the same (row-dropped) `target`, and attached as `TrainedChallenger.champion_metrics`. Rows dropped for a missing `target` are dropped from this too, so champion and challenger are always evaluated on the same population. |
 
-**Returns** `TrainedChallenger` — a dataclass with `pipeline` (the fitted scikit-learn `Pipeline`), `task`, `metrics`, `hyperparameters`, and `export` (a `SurrogateExport`, structurally identical to what `export_surrogate()` returns for a server-trained surrogate — score either one with the same `proxyml_core.export.predict_from_export`).
+**Returns** `TrainedChallenger` — a dataclass with `pipeline` (the fitted scikit-learn `Pipeline`), `task`, `metrics`, `hyperparameters`, `export` (a `SurrogateExport`, structurally identical to what `export_surrogate()` returns for a server-trained surrogate — score either one with the same `proxyml_core.export.predict_from_export`), `n_samples_total`, `n_samples_dropped_unlabeled`, `population_note`, and `champion_metrics` (`None` unless `champion_predictions` was given).
 
 ```python
 from proxyml.local import train_challenger
 
 result = train_challenger(df, df.pop("approved"), schema, task="classification")
 print(result.metrics)  # {"f1": 0.91, "accuracy": 0.90}
+print(result.population_note)  # "Evaluated on all 300 row(s) — 'target' had no missing values."
 ```
 
 ---
 
-### `train_auto_challenger(data, target_col, *, immutable_cols=None, complexity=Complexity.MODERATE, feature_names=None, task="auto", test_size=0.2)`
+### `train_auto_challenger(data, target_col, *, immutable_cols=None, complexity=Complexity.MODERATE, feature_names=None, task="auto", test_size=0.2, champion_predictions=None)`
 
 Convenience wrapper around `get_schema()` + `train_challenger()` — loads `data`, infers a schema, and trains in one call. This only automates schema inference and the feature/target column split; it does not search across `LADDERS` for the best-fitting rung — `complexity` still defaults to `Complexity.MODERATE` and remains overridable.
+
+Rows with a missing `target_col` value are dropped before training and champion scoring — see `train_challenger()` above. Schema inference (feature means/stds/categories) still runs over every row, including ones later dropped for a missing target — only training and evaluation are restricted to the labeled subset.
 
 **Parameters**
 
@@ -338,6 +345,7 @@ Convenience wrapper around `get_schema()` + `train_challenger()` — loads `data
 | `feature_names` | `list[str] \| None` | Subset of feature columns to train on; omit for all. |
 | `task` | `str` | `"classification"`, `"regression"`, or `"auto"`. |
 | `test_size` | `float` | Fraction of data held out to compute fidelity metrics. |
+| `champion_predictions` | `np.ndarray \| list \| None` | A champion model's predictions, one per row of `data` (same order) — see `train_challenger()`. |
 
 **Returns** `TrainedChallenger` — same as `train_challenger`.
 
@@ -345,6 +353,54 @@ Convenience wrapper around `get_schema()` + `train_challenger()` — loads `data
 from proxyml.local import train_auto_challenger
 
 result = train_auto_challenger("data.csv", "approved", task="classification")
+```
+
+---
+
+### `score_champion(labels, predictions, *, task)`
+
+Score a champion model's predictions against real labels, locally. Uses the exact same scoring code as `train_challenger()`'s internal fidelity metrics, so `champion_metrics` and a paired `TrainedChallenger.metrics` are computed identically — required for an apples-to-apples champion-vs-challenger comparison.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `labels` | `np.ndarray \| list` | Real ground-truth labels. |
+| `predictions` | `np.ndarray \| list` | The champion model's predictions for those same labels. |
+| `task` | `"classification" \| "regression"` | No `"auto"` here — pass the same task the paired challenger resolved to (e.g. `result.task`), since letting the two resolve independently risks them silently diverging. |
+
+**Returns** `dict[str, float]` — `{"f1": ..., "accuracy": ...}` for classification or `{"r2": ...}` for regression, the same shape as `TrainedChallenger.metrics`.
+
+Most callers won't need to call this directly — pass `champion_predictions` to `train_challenger()`/`train_auto_challenger()` instead, which calls this automatically against the correct (row-dropped) population. Call it directly only when scoring a champion independently of a specific training run.
+
+```python
+from proxyml.local import score_champion
+
+champion_metrics = score_champion(result.pipeline.predict(X_test), champion_preds, task=result.task)
+```
+
+---
+
+### `to_challenger_upload(result, *, n_samples=None, champion_metrics=None, sdk_version=None, proxyml_core_version=None)`
+
+Assemble the JSON-serializable payload for `POST /app/projects/{id}/challenger`, ready for `json.dump` — upload it either by POSTing it directly, or by saving it to a file and using the dashboard's "Upload challenger" button.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `result` | `TrainedChallenger` | Output of `train_challenger()`/`train_auto_challenger()`. |
+| `n_samples` | `int \| None` | Size of the evaluation set. Defaults to `result.n_samples_total - result.n_samples_dropped_unlabeled` (the labeled-row count); override only if you scored on some other population. |
+| `champion_metrics` | `dict[str, float] \| None` | The champion's performance, from `score_champion()`. Defaults to `result.champion_metrics`. Pass `None` explicitly (with no `champion_predictions` used during training) to get a self-contained export of the challenger alone — e.g. to save/share before you have a champion to compare against. The upload endpoint itself still requires `champion_metrics` at upload time; this function just doesn't force you to have it up front. |
+| `sdk_version` | `str \| None` | Defaults to the installed `proxyml` version. |
+| `proxyml_core_version` | `str \| None` | Defaults to the installed `proxyml-core` version. |
+
+**Returns** `dict[str, Any]` with keys `export`, `challenger_metrics`, `n_samples`, `n_samples_total`, `n_samples_dropped_unlabeled`, `population_note`, `complexity`, `sdk_version`, `proxyml_core_version`, and `champion_metrics` (when available) — the dropped-row count and scope limitation travel with the upload so a reviewer can see them.
+
+```python
+from proxyml.local import to_challenger_upload
+
+payload = to_challenger_upload(result)  # n_samples and champion_metrics auto-derived
 ```
 
 ---

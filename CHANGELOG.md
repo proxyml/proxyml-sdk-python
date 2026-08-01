@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-08-01
+
+### Added
+- `train_challenger()`/`train_auto_challenger()` now drop rows with a
+  missing (NaN/None) target before training, the CV split, and champion
+  scoring, instead of crashing. The drop is recorded on the result —
+  `TrainedChallenger.n_samples_total`, `.n_samples_dropped_unlabeled`, and a
+  human-readable `.population_note` — rather than silently disappearing.
+- `train_challenger()`/`train_auto_challenger()` gained a
+  `champion_predictions` parameter: one prediction per row of the original
+  (pre-drop) data, in the same order. The identical rows dropped for a
+  missing target are also dropped from `champion_predictions`, and the
+  champion is scored via `score_champion()` automatically — attached as
+  `TrainedChallenger.champion_metrics`. This guarantees the champion and
+  challenger are always evaluated on the same labeled population; scoring
+  a champion on a different population than the challenger (e.g. because a
+  caller hand-dropped unlabeled rows for one but not the other) is no
+  longer possible when using this parameter.
+- `to_challenger_upload()`'s `n_samples` and `champion_metrics` are now
+  optional, defaulting to `result.n_samples_total - result.n_samples_dropped_unlabeled`
+  and `result.champion_metrics` respectively. The payload also always
+  includes `n_samples_total`, `n_samples_dropped_unlabeled`, and
+  `population_note`, so the dropped-row count and scope limitation travel
+  with the upload. Explicit arguments still override these defaults.
+
 ## [0.5.0] - 2026-07-19
 
 ### Added

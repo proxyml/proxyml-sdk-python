@@ -286,6 +286,108 @@ def test_to_challenger_upload_payload_is_json_serializable():
     json.dumps(payload)  # must not raise
 
 
+def _labeled_df_with_nan_target(n=200, n_nan=20, seed=20):
+    df = _labeled_df(n=n, seed=seed)
+    df["approved"] = df["approved"].astype(float)
+    df.loc[df.index[:n_nan], "approved"] = np.nan
+    return df
+
+
+def test_nan_target_rows_are_dropped_and_counted():
+    df = _labeled_df_with_nan_target(n=200, n_nan=20)
+    result = train_auto_challenger(df, "approved", task="classification")
+
+    assert result.n_samples_total == 200
+    assert result.n_samples_dropped_unlabeled == 20
+    assert "20" in result.population_note
+    assert "180" in result.population_note
+
+
+def test_no_nan_targets_reports_zero_dropped():
+    df = _labeled_df(seed=21)
+    result = train_auto_challenger(df, "approved", task="classification")
+
+    assert result.n_samples_total == len(df)
+    assert result.n_samples_dropped_unlabeled == 0
+    assert "no missing values" in result.population_note
+
+
+def test_all_nan_target_raises():
+    df = _labeled_df(n=20, seed=22)
+    df["approved"] = np.nan
+    with pytest.raises(ValueError, match="missing"):
+        train_auto_challenger(df, "approved", task="classification")
+
+
+def test_champion_predictions_wrong_length_raises():
+    df = _labeled_df(seed=23)
+    with pytest.raises(ValueError, match="one entry per row"):
+        train_auto_challenger(
+            df, "approved", task="classification", champion_predictions=[True, False]
+        )
+
+
+def test_champion_predictions_scored_only_on_labeled_rows():
+    # Champion predictions mirror the (possibly-NaN) target itself, except on
+    # rows that get dropped as unlabeled, where they're deliberately wrong.
+    # If those rows leaked into scoring, champion accuracy would come in
+    # under 1.0 instead of exactly 1.0 — proving the shared-drop guarantee,
+    # not just that nothing crashes.
+    df = _labeled_df_with_nan_target(n=200, n_nan=20, seed=24)
+    champion_predictions = [False if pd.isna(v) else v for v in df["approved"]]
+
+    result = train_auto_challenger(
+        df, "approved", task="classification", champion_predictions=champion_predictions
+    )
+
+    assert result.champion_metrics is not None
+    assert result.champion_metrics["accuracy"] == 1.0
+
+
+def test_champion_predictions_not_given_leaves_champion_metrics_none():
+    df = _labeled_df(seed=25)
+    result = train_auto_challenger(df, "approved", task="classification")
+    assert result.champion_metrics is None
+
+
+def test_to_challenger_upload_defaults_n_samples_from_result():
+    df = _labeled_df_with_nan_target(n=200, n_nan=20, seed=26)
+    result = train_auto_challenger(df, "approved", task="classification")
+
+    payload = to_challenger_upload(result)
+
+    assert payload["n_samples"] == 180
+    assert payload["n_samples_total"] == 200
+    assert payload["n_samples_dropped_unlabeled"] == 20
+    assert payload["population_note"] == result.population_note
+
+
+def test_to_challenger_upload_defaults_champion_metrics_from_result():
+    df = _labeled_df(seed=27)
+    champion_predictions = df["approved"].tolist()
+    result = train_auto_challenger(
+        df, "approved", task="classification", champion_predictions=champion_predictions
+    )
+
+    payload = to_challenger_upload(result)
+
+    assert payload["champion_metrics"] == result.champion_metrics
+
+
+def test_to_challenger_upload_explicit_args_override_result_defaults():
+    df = _labeled_df(seed=28)
+    champion_predictions = df["approved"].tolist()
+    result = train_auto_challenger(
+        df, "approved", task="classification", champion_predictions=champion_predictions
+    )
+
+    override_metrics = {"f1": 0.1, "accuracy": 0.1}
+    payload = to_challenger_upload(result, n_samples=999, champion_metrics=override_metrics)
+
+    assert payload["n_samples"] == 999
+    assert payload["champion_metrics"] == override_metrics
+
+
 def test_train_auto_challenger_passes_immutable_cols_to_get_schema():
     from unittest.mock import patch
 

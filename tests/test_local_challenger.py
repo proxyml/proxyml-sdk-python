@@ -447,18 +447,15 @@ def test_to_challenger_upload_champion_labels_fingerprint_for_decoupled_path():
     assert payload["champion_data_fingerprint"] == result.target_fingerprint
 
 
-def test_to_challenger_upload_champion_labels_fingerprint_differs_for_different_data():
+def test_to_challenger_upload_raises_on_fingerprint_mismatch():
     df = _labeled_df(seed=33)
     target = df["approved"]
     result = train_challenger(df, target, _schema(), task="classification")
     champion_metrics = score_champion(target, target, task="classification")
     other_labels = ~target
 
-    payload = to_challenger_upload(
-        result, champion_metrics=champion_metrics, champion_labels=other_labels
-    )
-
-    assert payload["challenger_data_fingerprint"] != payload["champion_data_fingerprint"]
+    with pytest.raises(ValueError, match="don't match"):
+        to_challenger_upload(result, champion_metrics=champion_metrics, champion_labels=other_labels)
 
 
 def test_to_challenger_upload_omits_champion_fingerprint_without_labels_or_internal_path():

@@ -27,6 +27,7 @@ from sklearn.pipeline import Pipeline
 
 from proxyml.schema_builder import get_schema
 from proxyml_core.export import SurrogateExport
+from proxyml_core.fingerprint import FINGERPRINT_MISMATCH_MESSAGE, check_fingerprints
 from proxyml_core.modeling.estimators import (
     binarize_if_probabilities,
     extract_hyperparameters,
@@ -350,6 +351,13 @@ def to_challenger_upload(
     itself still requires ``champion_metrics`` at upload time; this function
     just doesn't force you to have it up front.
 
+    If both fingerprints end up present and don't match, raises
+    ``ValueError`` immediately — via the same
+    ``proxyml_core.check_fingerprints``/``FINGERPRINT_MISMATCH_MESSAGE`` the
+    upload endpoint itself uses — rather than waiting for a round-trip to
+    the server to find out the challenger and champion were scored on
+    different data.
+
     Args:
         result: output of ``train_challenger()``/``train_auto_challenger()``.
         n_samples: size of the evaluation set both ``result.metrics`` and
@@ -400,6 +408,10 @@ def to_challenger_upload(
             payload["champion_data_fingerprint"] = fingerprint_labels(champion_labels)
         elif used_internal_champion_metrics:
             payload["champion_data_fingerprint"] = result.target_fingerprint
+        if check_fingerprints(
+            payload["challenger_data_fingerprint"], payload.get("champion_data_fingerprint")
+        ) is False:
+            raise ValueError(FINGERPRINT_MISMATCH_MESSAGE)
     return payload
 
 

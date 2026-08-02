@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-08-02
+
+### Added
+- `proxyml.local.fingerprint_labels(values)`, made public (was previously
+  an internal helper behind `to_challenger_upload()`). Lets a caller that
+  scores a champion decoupled from `train_challenger()` — with no
+  `TrainedChallenger` in hand, e.g. two separate MCP tool calls with no
+  shared Python state — compute `champion_data_fingerprint` themselves and
+  carry it into a challenger upload payload assembled by hand, the same way
+  `to_challenger_upload(champion_labels=...)` already does internally.
+
 ## [0.7.0] - 2026-08-02
 
 ### Added

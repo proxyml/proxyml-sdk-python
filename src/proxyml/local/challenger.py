@@ -127,7 +127,7 @@ class TrainedChallenger:
     champion_metrics: dict[str, float] | None = None
 
 
-def _fingerprint_values(values: np.ndarray | list) -> str:
+def fingerprint_labels(values: np.ndarray | list) -> str:
     """Hash an array of labels, deterministically, without the data ever leaving this process.
 
     ``.tolist()`` converts numpy scalars to native Python types before
@@ -135,6 +135,13 @@ def _fingerprint_values(values: np.ndarray | list) -> str:
     different scalar repr behavior. Order is preserved (not sorted) since
     it encodes row alignment — that's exactly what a "same data?" check
     needs to be sensitive to.
+
+    Public so callers that score a champion decoupled from
+    ``train_challenger()`` — e.g. two separate tool calls in an MCP
+    server, with no shared Python state between them — can compute
+    ``champion_data_fingerprint`` themselves and carry it into a payload
+    assembled by hand, the same way ``to_challenger_upload(champion_labels=...)``
+    does internally.
     """
     canonical = json.dumps(np.asarray(values).tolist())
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -202,7 +209,7 @@ def train_challenger(
             and the result is attached as ``TrainedChallenger.champion_metrics``.
     """
     target_arr = np.asarray(target)
-    target_fingerprint = _fingerprint_values(target_arr)
+    target_fingerprint = fingerprint_labels(target_arr)
     if champion_predictions is not None and len(champion_predictions) != len(target_arr):
         raise ValueError(
             f"champion_predictions must have one entry per row of target "
@@ -390,7 +397,7 @@ def to_challenger_upload(
         payload["champion_metrics"] = champion_metrics
         payload["challenger_data_fingerprint"] = result.target_fingerprint
         if champion_labels is not None:
-            payload["champion_data_fingerprint"] = _fingerprint_values(champion_labels)
+            payload["champion_data_fingerprint"] = fingerprint_labels(champion_labels)
         elif used_internal_champion_metrics:
             payload["champion_data_fingerprint"] = result.target_fingerprint
     return payload

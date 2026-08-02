@@ -8,6 +8,7 @@ from proxyml.local import (
     Complexity,
     LADDERS,
     TrainedChallenger,
+    fingerprint_labels,
     score_champion,
     to_challenger_upload,
     train_auto_challenger,
@@ -480,3 +481,14 @@ def test_to_challenger_upload_without_champion_metrics_omits_fingerprints():
 
     assert "challenger_data_fingerprint" not in payload
     assert "champion_data_fingerprint" not in payload
+
+
+def test_fingerprint_labels_is_public_and_matches_target_fingerprint():
+    """Exercises the exact use case this was made public for: a caller with
+    no TrainedChallenger in hand (e.g. a decoupled score_champion() call)
+    computing the same fingerprint train_challenger() would have."""
+    df = _labeled_df(seed=36)
+    target = df["approved"]
+    result = train_challenger(df, target, _schema(), task="classification")
+
+    assert fingerprint_labels(target) == result.target_fingerprint

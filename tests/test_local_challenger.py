@@ -402,3 +402,81 @@ def test_train_auto_challenger_passes_immutable_cols_to_get_schema():
     called_kwargs = mock_get_schema.call_args.kwargs
     assert list(called_df.columns) == list(features_df.columns)
     assert called_kwargs["immutable_cols"] == ["age"]
+
+
+def test_target_fingerprint_is_deterministic_for_identical_data():
+    df = _labeled_df(seed=29)
+    result_a = train_auto_challenger(df, "approved", task="classification")
+    result_b = train_auto_challenger(df, "approved", task="classification")
+
+    assert result_a.target_fingerprint == result_b.target_fingerprint
+
+
+def test_target_fingerprint_differs_for_different_data():
+    df_a = _labeled_df(seed=29)
+    df_b = _labeled_df(seed=30)
+    result_a = train_auto_challenger(df_a, "approved", task="classification")
+    result_b = train_auto_challenger(df_b, "approved", task="classification")
+
+    assert result_a.target_fingerprint != result_b.target_fingerprint
+
+
+def test_to_challenger_upload_includes_matching_fingerprints_on_internal_champion_path():
+    df = _labeled_df(seed=31)
+    champion_predictions = df["approved"].tolist()
+    result = train_auto_challenger(
+        df, "approved", task="classification", champion_predictions=champion_predictions
+    )
+
+    payload = to_challenger_upload(result)
+
+    assert payload["challenger_data_fingerprint"] == result.target_fingerprint
+    assert payload["champion_data_fingerprint"] == result.target_fingerprint
+
+
+def test_to_challenger_upload_champion_labels_fingerprint_for_decoupled_path():
+    df = _labeled_df(seed=32)
+    target = df["approved"]
+    result = train_challenger(df, target, _schema(), task="classification")
+    champion_metrics = score_champion(target, target, task="classification")
+
+    payload = to_challenger_upload(result, champion_metrics=champion_metrics, champion_labels=target)
+
+    assert payload["challenger_data_fingerprint"] == result.target_fingerprint
+    assert payload["champion_data_fingerprint"] == result.target_fingerprint
+
+
+def test_to_challenger_upload_champion_labels_fingerprint_differs_for_different_data():
+    df = _labeled_df(seed=33)
+    target = df["approved"]
+    result = train_challenger(df, target, _schema(), task="classification")
+    champion_metrics = score_champion(target, target, task="classification")
+    other_labels = ~target
+
+    payload = to_challenger_upload(
+        result, champion_metrics=champion_metrics, champion_labels=other_labels
+    )
+
+    assert payload["challenger_data_fingerprint"] != payload["champion_data_fingerprint"]
+
+
+def test_to_challenger_upload_omits_champion_fingerprint_without_labels_or_internal_path():
+    df = _labeled_df(seed=34)
+    target = df["approved"]
+    result = train_challenger(df, target, _schema(), task="classification")
+    champion_metrics = score_champion(target, target, task="classification")
+
+    payload = to_challenger_upload(result, champion_metrics=champion_metrics)
+
+    assert payload["challenger_data_fingerprint"] == result.target_fingerprint
+    assert "champion_data_fingerprint" not in payload
+
+
+def test_to_challenger_upload_without_champion_metrics_omits_fingerprints():
+    df = _labeled_df(seed=35)
+    result = train_auto_challenger(df, "approved", task="classification")
+
+    payload = to_challenger_upload(result)
+
+    assert "challenger_data_fingerprint" not in payload
+    assert "champion_data_fingerprint" not in payload

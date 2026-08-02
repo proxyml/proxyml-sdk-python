@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-08-02
+
+### Added
+- `TrainedChallenger` gained a `target_fingerprint` field: a SHA-256 hash
+  of the raw `target` array passed to `train_challenger()`, computed
+  locally — the underlying data never leaves the caller's machine, only
+  the hash does. `to_challenger_upload()` now includes it as
+  `challenger_data_fingerprint` in the upload payload whenever
+  `champion_metrics` is present.
+- `to_challenger_upload()` gained a `champion_labels` parameter: pass the
+  same `labels` array you gave to a standalone `score_champion()` call, and
+  its fingerprint is included as `champion_data_fingerprint`. When
+  `champion_metrics` instead comes from `train_challenger()`'s internal
+  `champion_predictions=` path, `champion_data_fingerprint` defaults to the
+  same value as `challenger_data_fingerprint` — guaranteed identical by
+  construction. The upload endpoint uses both fingerprints to catch the
+  challenger and champion having been accidentally scored on different
+  data (e.g. the wrong file) before it silently produces a misleading
+  comparison. Both fields are optional and additive — omitting them (as
+  every prior SDK version does) changes nothing about the upload.
+
 ## [0.6.0] - 2026-08-01
 
 ### Added

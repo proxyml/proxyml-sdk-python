@@ -10,6 +10,8 @@ training target was real ground truth or a black box's predictions.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, replace
 from enum import Enum
 from importlib.metadata import version as _pkg_version
@@ -121,7 +123,21 @@ class TrainedChallenger:
     n_samples_total: int
     n_samples_dropped_unlabeled: int
     population_note: str
+    target_fingerprint: str
     champion_metrics: dict[str, float] | None = None
+
+
+def _fingerprint_values(values: np.ndarray | list) -> str:
+    """Hash an array of labels, deterministically, without the data ever leaving this process.
+
+    ``.tolist()`` converts numpy scalars to native Python types before
+    serializing, so the hash doesn't drift across numpy versions with
+    different scalar repr behavior. Order is preserved (not sorted) since
+    it encodes row alignment — that's exactly what a "same data?" check
+    needs to be sensitive to.
+    """
+    canonical = json.dumps(np.asarray(values).tolist())
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _population_note(target_name: str, n_total: int, n_labeled: int, n_dropped: int) -> str:
@@ -186,6 +202,7 @@ def train_challenger(
             and the result is attached as ``TrainedChallenger.champion_metrics``.
     """
     target_arr = np.asarray(target)
+    target_fingerprint = _fingerprint_values(target_arr)
     if champion_predictions is not None and len(champion_predictions) != len(target_arr):
         raise ValueError(
             f"champion_predictions must have one entry per row of target "
@@ -264,6 +281,7 @@ def train_challenger(
         n_samples_total=n_total,
         n_samples_dropped_unlabeled=n_dropped,
         population_note=_population_note(target_name, n_total, n_labeled, n_dropped),
+        target_fingerprint=target_fingerprint,
         champion_metrics=champion_metrics,
     )
 
@@ -286,6 +304,13 @@ def score_champion(
 
     Returns ``{"f1":..., "accuracy":...}`` for classification or ``{"r2":...}``
     for regression — the same shape as ``TrainedChallenger.metrics``.
+
+    If you're calling this decoupled from ``train_challenger()`` (i.e. not
+    via its ``champion_predictions=`` param), pass the same ``labels`` you
+    used here as ``champion_labels=`` to ``to_challenger_upload()`` — that
+    lets the upload endpoint confirm the challenger and champion were
+    actually scored on the same data, catching an accidental mismatched
+    file before it silently produces a misleading comparison.
     """
     return score_predictions(np.asarray(labels), np.asarray(predictions), task=task)
 
@@ -295,6 +320,7 @@ def to_challenger_upload(
     *,
     n_samples: int | None = None,
     champion_metrics: dict[str, float] | None = None,
+    champion_labels: np.ndarray | list | None = None,
     sdk_version: str | None = None,
     proxyml_core_version: str | None = None,
 ) -> dict[str, Any]:
@@ -327,11 +353,21 @@ def to_challenger_upload(
         champion_metrics: the champion's real-world performance, from
             ``score_champion()`` — same metric keys as ``result.metrics``.
             Defaults to ``result.champion_metrics``.
+        champion_labels: the ``labels`` array you passed to a standalone
+            ``score_champion()`` call, if ``champion_metrics`` didn't come
+            from ``train_challenger()``'s internal ``champion_predictions=``
+            path. Used only to compute ``champion_data_fingerprint`` — the
+            labels themselves are never included in the payload. If
+            ``champion_metrics`` resolves from ``result.champion_metrics``
+            instead, the fingerprint defaults to ``result.target_fingerprint``
+            (guaranteed identical, since that internal path scores against
+            the exact same data).
         sdk_version: defaults to the installed ``proxyml`` version.
         proxyml_core_version: defaults to the installed ``proxyml-core`` version.
     """
     if n_samples is None:
         n_samples = result.n_samples_total - result.n_samples_dropped_unlabeled
+    used_internal_champion_metrics = champion_metrics is None
     if champion_metrics is None:
         champion_metrics = result.champion_metrics
     if sdk_version is None:
@@ -352,6 +388,11 @@ def to_challenger_upload(
     }
     if champion_metrics is not None:
         payload["champion_metrics"] = champion_metrics
+        payload["challenger_data_fingerprint"] = result.target_fingerprint
+        if champion_labels is not None:
+            payload["champion_data_fingerprint"] = _fingerprint_values(champion_labels)
+        elif used_internal_champion_metrics:
+            payload["champion_data_fingerprint"] = result.target_fingerprint
     return payload
 
 

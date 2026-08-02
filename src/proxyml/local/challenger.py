@@ -193,6 +193,18 @@ def train_challenger(
     are dropped from both sides — champion and challenger are always
     evaluated on the same labeled population, never on different ones.
 
+    Note that ``target_fingerprint`` (on the result) is computed from
+    ``target`` exactly as passed in — NaNs and all — *before* this drop
+    happens, not from the labeled subset actually used for training/scoring.
+    That's transparent if you use ``champion_predictions`` above, since it's
+    matched against the same pre-drop array internally. But if you're
+    pairing this result with a champion scored separately (``score_champion()``
+    + ``champion_labels=`` on ``to_challenger_upload()``), you must pass that
+    same original, uncleaned ``target`` array as ``champion_labels`` — not a
+    version you've already run ``dropna()`` on yourself — or the two
+    fingerprints won't match even though the actually-scored population is
+    identical.
+
     Args:
         df: samples to train on, one column per schema feature.
         target: the value to predict for each row of ``df`` — ground-truth

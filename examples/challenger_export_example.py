@@ -64,3 +64,22 @@ print("\nWrote challenger.json - upload it via the ProxyML dashboard's "
 #
 #   result = train_auto_challenger(df, "diagnosis", task="classification")
 #   payload = to_challenger_upload(result)
+
+# --- What if the champion was scored on different data? ---
+# train_challenger()/train_auto_challenger() fingerprint the labels they're
+# scored against (a SHA-256 hash, in TrainedChallenger.target_fingerprint).
+# to_challenger_upload() compares that against the champion's own
+# fingerprint and raises immediately if they don't match - catching a
+# champion accidentally scored against a different train/test split, an
+# extra dropna(), or the wrong file entirely, before the mismatched
+# comparison is ever uploaded or shared. Simulated here by flipping every
+# label, standing in for a champion scored on a subtly different population:
+mismatched_champion_labels = ~df["diagnosis"].astype(bool).to_numpy()
+try:
+    to_challenger_upload(
+        challenger_result,
+        champion_metrics=challenger_result.champion_metrics,
+        champion_labels=mismatched_champion_labels,
+    )
+except ValueError as e:
+    print("\nCaught a mismatched champion/challenger comparison:", e)

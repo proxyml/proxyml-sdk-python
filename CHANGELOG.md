@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `upload_challenger(payload, ci_token=None)` and
+  `get_challenger_summary(ci_token=None)` in `proxyml.client`: upload a
+  challenger comparison and fetch a CI-ready result (winner, primary metric,
+  delta, markdown snippet) from a headless environment. Authenticated with a
+  new, project-scoped CI token (`PROXYML_CI_TOKEN`/`X-CI-Token`) rather than
+  the account-wide `PROXYML_API_KEY` — a CI token only ever authorizes
+  writes to the one project it was minted for, since the account's API key
+  has no way to prove it owns a given dashboard project.
+- New `proxyml.ci` module: `post_challenger_comment()` posts or updates a
+  sticky PR comment (matched via a hidden HTML marker, so reruns edit in
+  place instead of piling up duplicates) summarizing the latest challenger
+  comparison, via GitHub's REST API. Reads `GITHUB_TOKEN`/
+  `GITHUB_REPOSITORY`/`GITHUB_EVENT_PATH` from the environment by default,
+  so a GitHub Actions workflow needs no extra config in the common case.
+  See `examples/ci_challenger_example.py` and
+  `examples/github_actions_challenger.yml`.
+- `post()`/`get()` in `proxyml.client` gained an optional `headers`
+  parameter, overriding the default `X-API-KEY` auth headers — used by the
+  two functions above, backward compatible for existing callers.
+- Requires `alposit`'s `/ci/challenger` and `/ci/challenger/summary`
+  endpoints (project-scoped CI tokens).
+
 ## [0.9.0] - 2026-08-02
 
 ### Changed

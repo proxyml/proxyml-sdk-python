@@ -11,7 +11,9 @@ from proxyml_core.schema import FeatureSchema
 from proxyml.client import (
     _cast_column,
     _base_url,
+    _ci_headers,
     _headers,
+    get_challenger_summary,
     health_check,
     delete_model,
     delete_schema,
@@ -37,6 +39,7 @@ from proxyml.client import (
     train_surrogate,
     train_auto_surrogate,
     update_model,
+    upload_challenger,
 )
 
 
@@ -1033,3 +1036,78 @@ def test_update_model_no_fields_raises():
 def test_update_model_failure_returns_none(mock_patch):
     mock_patch.return_value = _mock_response(404, {"detail": "not found"})
     assert update_model("abc-123", name="x") is None
+
+
+# ---------------------------------------------------------------------------
+# _ci_headers
+# ---------------------------------------------------------------------------
+
+def test_ci_headers_raises_without_token(monkeypatch):
+    monkeypatch.delenv("PROXYML_CI_TOKEN", raising=False)
+    with pytest.raises(EnvironmentError, match="PROXYML_CI_TOKEN"):
+        _ci_headers()
+
+
+def test_ci_headers_reads_env(monkeypatch):
+    monkeypatch.setenv("PROXYML_CI_TOKEN", "test-ci-token")
+    h = _ci_headers()
+    assert h["X-CI-TOKEN"] == "test-ci-token"
+    assert h["Content-Type"] == "application/json"
+
+
+def test_ci_headers_explicit_token_overrides_env(monkeypatch):
+    monkeypatch.setenv("PROXYML_CI_TOKEN", "env-token")
+    h = _ci_headers(ci_token="explicit-token")
+    assert h["X-CI-TOKEN"] == "explicit-token"
+
+
+# ---------------------------------------------------------------------------
+# upload_challenger / get_challenger_summary
+# ---------------------------------------------------------------------------
+
+@patch("proxyml.client.post")
+def test_upload_challenger_success(mock_post, monkeypatch):
+    monkeypatch.setenv("PROXYML_CI_TOKEN", "test-ci-token")
+    mock_post.return_value = _mock_response(202, {"status": "ok", "challenger_version": "v1", "task": "regression"})
+    payload = {"export": {}, "challenger_metrics": {"r2": 0.9}, "champion_metrics": {"r2": 0.8}}
+
+    result = upload_challenger(payload)
+
+    assert result == {"status": "ok", "challenger_version": "v1", "task": "regression"}
+    mock_post.assert_called_once_with(
+        endpoint="/ci/challenger", payload=payload, headers={"Content-Type": "application/json", "X-CI-TOKEN": "test-ci-token"},
+    )
+
+
+@patch("proxyml.client.post")
+def test_upload_challenger_failure_returns_none(mock_post, monkeypatch):
+    monkeypatch.setenv("PROXYML_CI_TOKEN", "test-ci-token")
+    mock_post.return_value = _mock_response(401, {"detail": "invalid token"})
+    assert upload_challenger({}) is None
+
+
+def test_upload_challenger_raises_without_ci_token(monkeypatch):
+    monkeypatch.delenv("PROXYML_CI_TOKEN", raising=False)
+    with pytest.raises(EnvironmentError, match="PROXYML_CI_TOKEN"):
+        upload_challenger({})
+
+
+@patch("proxyml.client.get")
+def test_get_challenger_summary_success(mock_get, monkeypatch):
+    monkeypatch.setenv("PROXYML_CI_TOKEN", "test-ci-token")
+    summary = {"winner": "challenger", "primary_metric": "r2", "markdown_summary": "**ProxyML challenger beats champion**"}
+    mock_get.return_value = _mock_response(200, summary)
+
+    result = get_challenger_summary()
+
+    assert result == summary
+    mock_get.assert_called_once_with(
+        endpoint="/ci/challenger/summary", headers={"Content-Type": "application/json", "X-CI-TOKEN": "test-ci-token"},
+    )
+
+
+@patch("proxyml.client.get")
+def test_get_challenger_summary_failure_returns_none(mock_get, monkeypatch):
+    monkeypatch.setenv("PROXYML_CI_TOKEN", "test-ci-token")
+    mock_get.return_value = _mock_response(404, {"detail": "no challenger uploaded"})
+    assert get_challenger_summary() is None

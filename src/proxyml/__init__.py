@@ -26,6 +26,8 @@ from proxyml.client import (
     explain_local,
     explain_local_batch,
     update_model,
+    upload_challenger,
+    get_challenger_summary,
 )
 from proxyml.schema_builder import get_schema
 
@@ -58,5 +60,7 @@ __all__ = [
     "explain_local",
     "explain_local_batch",
     "update_model",
+    "upload_challenger",
+    "get_challenger_summary",
     "get_schema",
 ]

@@ -48,13 +48,35 @@ def _headers() -> dict:
     }
 
 
-def post(endpoint: str, payload: dict) -> requests.models.Response | _ErrorResponse:
+def _ci_headers(ci_token: str | None = None) -> dict:
+    """
+    Constructs request headers authenticated with a project-scoped CI token
+    rather than the account-wide PROXYML_API_KEY — see upload_challenger()
+    and get_challenger_summary().
+    """
+    token = ci_token or os.getenv("PROXYML_CI_TOKEN", "")
+    if not token:
+        raise EnvironmentError(
+            "PROXYML_CI_TOKEN is not set and no ci_token was provided. "
+            "Mint one from the ProxyML dashboard for this project, then set the "
+            "environment variable or pass ci_token= explicitly."
+        )
+    return {
+        'Content-Type': 'application/json',
+        'X-CI-TOKEN': token,
+    }
+
+
+def post(
+    endpoint: str, payload: dict, headers: dict | None = None
+) -> requests.models.Response | _ErrorResponse:
     """
     POSTs a request to a ProxyML API endpoint.
 
     Args:
         endpoint (str): ProxyML API endpoint.  PROXYML_BASE_URL is prepended e.g. use endpoint='/schemas' not 'https://api.proxyml.ai/api/v1/schemas'.
         payload (dict): JSON payload to POST.
+        headers (dict): overrides the default X-API-KEY auth headers, e.g. with _ci_headers().
 
     Returns:
         requests Response object.
@@ -63,7 +85,7 @@ def post(endpoint: str, payload: dict) -> requests.models.Response | _ErrorRespo
         return requests.post(
             url=f'{_base_url()}{endpoint}',
             data=orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
-            headers=_headers(),
+            headers=headers if headers is not None else _headers(),
             timeout=_TIMEOUT,
         )
     except requests.exceptions.RequestException as exc:
@@ -94,13 +116,16 @@ def put(endpoint: str, payload: dict) -> requests.models.Response | _ErrorRespon
         return _ErrorResponse()
 
 
-def get(endpoint: str, params: dict | None = None) -> requests.models.Response | _ErrorResponse:
+def get(
+    endpoint: str, params: dict | None = None, headers: dict | None = None
+) -> requests.models.Response | _ErrorResponse:
     """
     GETs a request to a ProxyML API endpoint.
 
     Args:
         endpoint (str): ProxyML API endpoint.  PROXYML_BASE_URL is prepended e.g. use endpoint='/schemas' not 'https://api.proxyml.ai/api/v1/schemas'.
         params (dict): query parameters.
+        headers (dict): overrides the default X-API-KEY auth headers, e.g. with _ci_headers().
 
     Returns:
         requests Response object.
@@ -108,7 +133,7 @@ def get(endpoint: str, params: dict | None = None) -> requests.models.Response |
     try:
         return requests.get(
             url=f'{_base_url()}{endpoint}',
-            headers=_headers(),
+            headers=headers if headers is not None else _headers(),
             params=params,
             timeout=_TIMEOUT,
         )
@@ -850,3 +875,54 @@ def delete_model(model_id: str) -> bool:
         r.text,
     )
     return False
+
+
+def upload_challenger(payload: dict, *, ci_token: str | None = None) -> dict | None:
+    """
+    Uploads a challenger comparison from a headless environment, e.g. a CI job.
+
+    Authenticated with a project-scoped CI token rather than PROXYML_API_KEY
+    — mint one from the ProxyML dashboard for the specific project this
+    challenger belongs to, since (unlike the account-wide API key) it only
+    ever authorizes writes to that one project. Set PROXYML_CI_TOKEN or pass
+    ci_token= explicitly.
+
+    Args:
+        payload (dict): output of proxyml.local.to_challenger_upload().
+        ci_token (str): overrides PROXYML_CI_TOKEN if provided.
+
+    Returns:
+        JSON object with the new challenger_version, or None if an error occurred.
+    """
+    r = post(endpoint='/ci/challenger', payload=payload, headers=_ci_headers(ci_token))
+    if r.status_code == 202:
+        return r.json()
+    logger.error(
+        "Challenger upload failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def get_challenger_summary(*, ci_token: str | None = None) -> dict | None:
+    """
+    Fetches a CI-ready summary of the latest challenger comparison for the
+    project authorized by the given CI token: which model won, the primary
+    metric and its delta, and a ready-to-post markdown snippet.
+
+    Set PROXYML_CI_TOKEN or pass ci_token= explicitly.
+
+    Returns:
+        JSON object, or None if an error occurred (e.g. no challenger has
+        been uploaded to this project yet).
+    """
+    r = get(endpoint='/ci/challenger/summary', headers=_ci_headers(ci_token))
+    if r.status_code == 200:
+        return r.json()
+    logger.error(
+        "Fetching challenger summary failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None

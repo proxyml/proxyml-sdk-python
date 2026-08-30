@@ -111,6 +111,9 @@ See [`docs/quickstart.md`](docs/quickstart.md) for a full walkthrough and [`docs
 | `interpret_counterfactual(sample, counterfactual, ...)` | Generate a human-readable explanation |
 | `proxyml.local.train_challenger(df, target, schema, ...)` | Train a challenger model locally — no API round-trip (`pip install 'proxyml[local]'`) |
 | `proxyml.local.train_auto_challenger(data, target_col, ...)` | Load data + train a local challenger in one call |
+| `upload_challenger(payload, ci_token=None)` | Upload a challenger comparison headlessly, e.g. from CI (`PROXYML_CI_TOKEN`, not `PROXYML_API_KEY`) |
+| `get_challenger_summary(ci_token=None)` | Fetch a CI-ready summary of the latest challenger comparison |
+| `proxyml.ci.post_challenger_comment(...)` | Post/update a sticky PR comment with the challenger comparison |
 
 Full documentation: [`docs/api.md`](docs/api.md)
 
@@ -122,6 +125,7 @@ Full documentation: [`docs/api.md`](docs/api.md)
 - [`examples/multiclass_example.py`](examples/multiclass_example.py) — Multi-class classification with per-class feature importances
 - [`examples/testing_example.py`](examples/testing_example.py) — Using a surrogate as a reference model in CI
 - [`examples/surrogate_export_example.py`](examples/surrogate_export_example.py) — Exporting a surrogate and reproducing its predictions locally
+- [`examples/ci_challenger_example.py`](examples/ci_challenger_example.py) + [`examples/github_actions_challenger.yml`](examples/github_actions_challenger.yml) — Training a challenger and posting the comparison as a PR comment from CI
 
 ## License
 

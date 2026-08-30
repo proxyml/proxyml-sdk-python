@@ -419,6 +419,70 @@ print(LADDERS[Complexity.SIMPLE].description)
 
 ---
 
+## Continuous Integration (`proxyml.ci`)
+
+Post a challenger comparison as a PR comment from a CI job — e.g. a GitHub Actions run that trains a challenger against real held-out data on every pull request. Authenticated with a project-scoped `PROXYML_CI_TOKEN` (mint one from the project's page in the ProxyML dashboard) rather than `PROXYML_API_KEY`, since a CI token only ever authorizes writes to the one project it was minted for — the account-wide API key has no way to prove it owns a given dashboard project.
+
+### `upload_challenger(payload, *, ci_token=None)`
+
+Uploads a challenger comparison from a headless environment. Same trust model as the dashboard's manual upload — self-reported, unsigned metrics.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `payload` | `dict` | Output of `proxyml.local.to_challenger_upload()`. |
+| `ci_token` | `str \| None` | Overrides `PROXYML_CI_TOKEN` if provided. |
+
+**Returns** `dict | None` — `{"status": "ok", "challenger_version": ..., "task": ...}`, or `None` on failure.
+
+---
+
+### `get_challenger_summary(*, ci_token=None)`
+
+Fetches a CI-ready summary of the latest challenger comparison for the project authorized by the given CI token: which model won, the primary metric and its delta, and a ready-to-post markdown snippet.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `ci_token` | `str \| None` | Overrides `PROXYML_CI_TOKEN` if provided. |
+
+**Returns** `dict | None` with keys `winner` (`"challenger" \| "champion" \| "tie"`), `primary_metric`, `champion_value`, `challenger_value`, `delta`, `challenger_version`, `trained_at`, `data_fingerprint_match`, and `markdown_summary`. `None` if no challenger has been uploaded to this project yet, or on API error.
+
+---
+
+### `proxyml.ci.post_challenger_comment(*, ci_token=None, github_token=None, repo=None, pr_number=None)`
+
+Posts or updates a sticky PR comment summarizing the latest challenger comparison. Fetches the summary via `get_challenger_summary()`, then finds-and-updates a prior comment (matched by a hidden HTML marker) if one exists on the PR, so repeated runs edit in place instead of piling up duplicates — the same way coverage bots behave.
+
+Reads `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, and `GITHUB_EVENT_PATH` from the environment by default — all three are set automatically inside a GitHub Actions job triggered by a `pull_request` event, so no arguments are needed in the common case.
+
+**Parameters**
+
+| Name | Type | Description |
+|---|---|---|
+| `ci_token` | `str \| None` | Overrides `PROXYML_CI_TOKEN` if provided. |
+| `github_token` | `str \| None` | Overrides `GITHUB_TOKEN` if provided. |
+| `repo` | `str \| None` | `"owner/name"`. Overrides `GITHUB_REPOSITORY` if provided. |
+| `pr_number` | `int \| None` | Overrides the PR number read from `GITHUB_EVENT_PATH` if provided — required on non-`pull_request` events. |
+
+**Returns** the created/updated GitHub comment JSON, or `None` if the challenger summary couldn't be fetched or the GitHub API call failed.
+
+```python
+from proxyml import local, ci
+from proxyml.client import upload_challenger
+
+result = local.train_challenger(df, df.pop("approved"), schema, task="classification")
+payload = local.to_challenger_upload(result, champion_metrics=my_champion_metrics)
+upload_challenger(payload)
+ci.post_challenger_comment()
+```
+
+See [`examples/ci_challenger_example.py`](../examples/ci_challenger_example.py) and [`examples/github_actions_challenger.yml`](../examples/github_actions_challenger.yml) for a full workflow.
+
+---
+
 ## Counterfactual Explanation
 
 ### `find_counterfactual(sample, target, n_neighbors=10000, perturbation_scale=0.1, version=None, as_df=True)`
@@ -660,3 +724,7 @@ new_key = rotate_key()
 |---|---|---|
 | `PROXYML_API_KEY` | *(required)* | API key. Must be set before using the SDK. |
 | `PROXYML_BASE_URL` | `https://api.proxyml.ai/api/v1` | Base URL for the API. |
+| `PROXYML_CI_TOKEN` | *(required for `upload_challenger`/`get_challenger_summary`)* | Project-scoped CI token — mint one from the ProxyML dashboard's project page. Distinct from `PROXYML_API_KEY`: it only ever authorizes writes to the one project it was minted for. See [Continuous Integration](#continuous-integration-proxymlci). |
+| `GITHUB_TOKEN` | *(required for `proxyml.ci.post_challenger_comment`)* | Set automatically inside a GitHub Actions job that declares `env: {GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}}`. |
+| `GITHUB_REPOSITORY` | *(auto-set in Actions)* | `"owner/name"` — read automatically by `proxyml.ci.post_challenger_comment` unless `repo=` is passed explicitly. |
+| `GITHUB_EVENT_PATH` | *(auto-set in Actions)* | Path to the triggering event's JSON payload — read automatically to find the PR number unless `pr_number=` is passed explicitly. |

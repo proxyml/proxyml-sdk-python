@@ -268,6 +268,8 @@ prediction = predict_from_export(result.export, sample={"age": 42, "income": 550
 
 If you already have a `FeatureSchema` and want more control over the feature/target split, use `train_challenger(df, target, schema)` directly instead of `train_auto_challenger`. Both default to `Complexity.MODERATE` — which matches the server's own default surrogate — but accept `complexity=Complexity.SIMPLE` or `Complexity.FLEXIBLE` for stronger or weaker regularization.
 
+To run this in CI and post the result as a PR comment instead of uploading through the dashboard, see [Continuous Integration](api.md#continuous-integration-proxymlci) in the API reference.
+
 ---
 
 ## Next Steps

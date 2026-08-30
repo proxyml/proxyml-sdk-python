@@ -1,0 +1,43 @@
+# Trains a challenger model against real held-out data on every pull
+# request, uploads it to ProxyML, and posts the comparison as a PR comment
+# via examples/ci_challenger_example.py.
+#
+# Setup:
+#   1. Mint a CI token from your project's page in the ProxyML dashboard
+#      (Challenger comparison -> CI token -> Mint), and add it as a repo
+#      secret named PROXYML_CI_TOKEN (Settings -> Secrets and variables ->
+#      Actions). Do NOT use your account's general PROXYML_API_KEY here —
+#      a CI token only authorizes writes to the one project it was minted
+#      for.
+#   2. Copy this file to .github/workflows/proxyml-challenger.yml.
+#   3. Replace ci_challenger_example.py's placeholder dataset/champion with
+#      your own evaluation data and production model's predictions.
+#
+# No GITHUB_TOKEN secret is needed — Actions provides one automatically,
+# scoped to this workflow run, with permission to comment on the triggering
+# PR (see the `permissions:` block below).
+
+name: ProxyML challenger comparison
+
+on:
+  pull_request:
+
+permissions:
+  pull-requests: write
+
+jobs:
+  challenger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install 'proxyml[local]' scikit-learn pandas
+
+      - run: python examples/ci_challenger_example.py
+        env:
+          PROXYML_CI_TOKEN: ${{ secrets.PROXYML_CI_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

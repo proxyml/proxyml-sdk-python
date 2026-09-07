@@ -30,7 +30,7 @@ dependencies = [
     "numpy>=1.23",
     "pandas>=1.5",
     "orjson>=3.9",
-    "proxyml-core>=0.1",
+    "proxyml-core>=0.1.0",
 ]
 
 [project.optional-dependencies]

@@ -132,6 +132,45 @@ A complete workflow:
 
 The example script uses a stand-in champion so it runs anywhere. Replace that with your real model's predictions before relying on the output.
 
+### Other CI systems (GitLab, Bitbucket, etc.)
+
+`ci.post_challenger_comment()` only supports GitHub. On other hosts, the upload and the summary work the same way. Only the posting step differs. `get_challenger_summary()` returns a host-neutral `markdown_summary`, so a short script can hand it to whatever your CI provides:
+
+```python
+# summary.py: writes the comparison to a file
+import sys
+from proxyml.client import get_challenger_summary
+
+summary = get_challenger_summary()
+if summary is None:
+    sys.exit("no challenger summary available")
+open("challenger-summary.md", "w").write(summary["markdown_summary"])
+```
+
+Then post the file as a merge request note. For example, in GitLab CI (an MR pipeline job):
+
+```yaml
+challenger:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - pip install 'proxyml[local]' scikit-learn pandas
+    - python train_and_upload.py        # train + upload_challenger(); needs PROXYML_CI_TOKEN
+    - python summary.py
+    - >
+      curl --fail --request POST
+      --header "PRIVATE-TOKEN: $GITLAB_COMMENT_TOKEN"
+      --data-urlencode "body@challenger-summary.md"
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/notes"
+```
+
+Things to know:
+
+- **You need a token with permission to comment.** `GITLAB_COMMENT_TOKEN` here is a project access token (API scope) stored as a masked CI variable. GitLab's built-in job token generally can't write MR notes. Scope the token as narrowly as your plan allows.
+- **It isn't sticky.** Each run adds a new note instead of editing the previous one, so a busy MR collects one per push. If that bothers you, list the MR's notes, find the one containing a marker string you add to the body, and update it instead of posting a new one.
+- **Bitbucket works the same way** with its pull request comments API and an app password or repository access token. Pipelines expose the repo and PR as `BITBUCKET_REPO_FULL_NAME` and `BITBUCKET_PR_ID`.
+- **These requests aren't tested against current GitLab and Bitbucket docs.** Check the endpoint and auth details for your version, especially on self-hosted instances.
+
 ---
 
 ## From an AI agent (MCP)

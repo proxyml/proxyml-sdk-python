@@ -1170,3 +1170,19 @@ def test_list_and_get_drift_checks(mock_get):
     assert get_drift_check("m1", "s1") == {"snapshot_id": "s1"}
     mock_get.return_value = _mock_response(404, {})
     assert get_drift_check("m1", "zz") is None
+
+
+@patch("proxyml.client.put")
+def test_put_schema_sends_n_samples_only_when_given(mock_put):
+    mock_put.return_value = _mock_response(200, {"features": []})
+    put_schema(FeatureSchema(features=[]), name="s", n_samples=321)
+    mock_put.assert_called_once_with(endpoint="/schema/s", payload={"features": [], "n_samples": 321})
+
+
+@patch("proxyml.client.train_surrogate")
+@patch("proxyml.client.put_schema")
+def test_train_auto_surrogate_records_row_count(mock_put_schema, mock_train):
+    mock_put_schema.return_value = FeatureSchema(features=[])
+    df = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "y": [0, 1, 0, 1]})
+    train_auto_surrogate(df, "y", schema_name="s")
+    assert mock_put_schema.call_args.kwargs["n_samples"] == 4

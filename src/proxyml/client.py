@@ -186,17 +186,24 @@ def delete(endpoint: str) -> requests.models.Response | _ErrorResponse:
         return _ErrorResponse()
 
 
-def put_schema(schema: FeatureSchema, name: str) -> FeatureSchema | None:
+def put_schema(schema: FeatureSchema, name: str, n_samples: int | None = None) -> FeatureSchema | None:
     """
     Uploads a data schema.
 
     Args:
         schema (FeatureSchema): data schema object, e.g. from get_schema()
         name (str): name for the schema.
+        n_samples (int): number of rows the schema's statistics were computed from,
+            if known. Stored with surrogates trained on this schema so that data
+            drift checks can allow for how noisy a small training set's statistics
+            are. Needs alposit 0.4.0+; older servers ignore it.
     Returns:
         The stored FeatureSchema, or None if the return code was not 200.
     """
-    r = put(endpoint=f'/schema/{name}', payload=schema.to_dict())
+    payload = schema.to_dict()
+    if n_samples is not None:
+        payload['n_samples'] = int(n_samples)
+    r = put(endpoint=f'/schema/{name}', payload=payload)
     if r.status_code == 200:
         logger.info("Schema '%s' uploaded successfully", name)
         return FeatureSchema.from_dict(r.json())
@@ -402,7 +409,7 @@ def train_auto_surrogate(
     features_df = df.drop(columns=[target_col])
 
     schema = get_schema(features_df, immutable_cols=immutable_cols)
-    if put_schema(schema, name=schema_name) is None:
+    if put_schema(schema, name=schema_name, n_samples=len(features_df)) is None:
         return None
 
     return train_surrogate(
@@ -959,9 +966,11 @@ def check_data_drift(
         thresholds (dict): overrides of the drift policy, any of mean_shift,
             std_ratio, category_tvd, count_rel_change, new_category_mass,
             noise_sigmas, min_samples. Omitted values use the server defaults.
-        baseline_n_samples (int): rows the training schema was computed from, if
-            you know it. Widens the sampling-noise allowance; strongly
-            recommended when the training set was small.
+        baseline_n_samples (int): rows the training schema was computed from.
+            Widens the sampling-noise allowance. Defaults to the count recorded
+            when the schema was uploaded (train_auto_surrogate and
+            put_schema(..., n_samples=) record it); pass it explicitly for
+            models whose schema was uploaded without one, especially small ones.
 
     Returns:
         dict with ``status`` ("pass", "drift" or "insufficient_sample"),

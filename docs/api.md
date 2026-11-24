@@ -37,7 +37,7 @@ Review and adjust the returned schema before uploading if needed — e.g. `schem
 
 ---
 
-### `put_schema(schema, name)`
+### `put_schema(schema, name, n_samples=None)`
 
 Upload a schema to the ProxyML API under a name. Schemas are named resources — `synthesize_data` and `train_surrogate` reference them by `schema_name`.
 
@@ -47,6 +47,7 @@ Upload a schema to the ProxyML API under a name. Schemas are named resources —
 |---|---|---|
 | `schema` | `FeatureSchema` | Typically produced by `get_schema`. |
 | `name` | `str` | Name to store the schema under. Overwrites any existing schema with the same name. |
+| `n_samples` | `int \| None` | Rows the schema's statistics were computed from. Recorded with models trained on this schema so data drift checks can allow for noisy statistics from a small training set (alposit 0.4.0+; older servers ignore it). `train_auto_surrogate` passes it automatically. |
 
 **Returns** `FeatureSchema | None` — the stored schema on success, `None` on failure.
 
@@ -698,7 +699,7 @@ Summarizes `df` locally and returns a verdict against the model's stored trainin
 - `status` is `"pass"`, `"drift"` or `"insufficient_sample"` (fewer rows than `min_samples`, default 100, so no verdict is given). `passed` is `True` only for `"pass"`. Drift is a normal return, not an error.
 - `features` lists per-feature findings (metric values, noise floors, and human-readable `reasons`). Added, removed or type-changed columns are reported as findings too.
 - `thresholds` overrides the policy per call: `mean_shift` (default 0.2, in baseline standard deviations), `std_ratio` (1.4), `category_tvd` (0.08), `count_rel_change` (0.2), `new_category_mass` (0.02), `noise_sigmas` (auto) and `min_samples` (100). A feature is flagged only when a metric exceeds its threshold **and** a sampling-noise allowance that grows as the sample shrinks, so lowering a threshold below that allowance has no effect. Lowering `noise_sigmas` is what makes checks more sensitive, at the cost of more false alarms.
-- `baseline_n_samples`: the number of rows the model's training schema was computed from, if you know it. Without it the baseline is treated as exact, which makes small training sets (a few hundred rows) false-alarm noticeably more often.
+- `baseline_n_samples`: the number of rows the model's training schema was computed from. Defaults to the count recorded when the schema was uploaded (`train_auto_surrogate` and `put_schema(..., n_samples=)` record it; the result's `baseline_n_source` says whether it came from `"request"` or `"schema"`). If neither is available the baseline is treated as exact, which makes small training sets (a few hundred rows) false-alarm noticeably more often, so pass it for models whose schema was uploaded without a count.
 - `df` is summarized with `get_schema()`, so types are inferred from dtypes. If the model's schema uses hand-tuned types (ordinal features, for example), a column can show up as `type_changed`; build the summary yourself and pass it as `schema=`.
 
 ```python

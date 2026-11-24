@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `put_schema(..., n_samples=)` records how many rows a schema's statistics
+  came from, and `train_auto_surrogate` passes it automatically. Data drift
+  checks then default `baseline_n_samples` to that count, so small training
+  sets stop false-alarming without the caller repeating the number. Needs
+  alposit 0.4.0+ (older servers ignore the field).
+
 ## [0.11.0] - 2026-11-24
 
 ### Added

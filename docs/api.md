@@ -687,6 +687,38 @@ for entry in diff["coefficient_diff"]:
 
 ---
 
+## Data Drift
+
+Compare recent data against the data a model was trained on. Only summary statistics are sent (means, standard deviations, category names with their frequencies, count rates), never rows. Each feature is compared on its own (marginal distribution); changes in the *relationships* between features are not detected. Each verdict is stored, and the last 100 per model are kept.
+
+### `check_data_drift(model_id, df, *, schema=None, label=None, thresholds=None, baseline_n_samples=None)`
+
+Summarizes `df` locally and returns a verdict against the model's stored training schema.
+
+- `status` is `"pass"`, `"drift"` or `"insufficient_sample"` (fewer rows than `min_samples`, default 100, so no verdict is given). `passed` is `True` only for `"pass"`. Drift is a normal return, not an error.
+- `features` lists per-feature findings (metric values, noise floors, and human-readable `reasons`). Added, removed or type-changed columns are reported as findings too.
+- `thresholds` overrides the policy per call: `mean_shift` (default 0.2, in baseline standard deviations), `std_ratio` (1.4), `category_tvd` (0.08), `count_rel_change` (0.2), `new_category_mass` (0.02), `noise_sigmas` (auto) and `min_samples` (100). A feature is flagged only when a metric exceeds its threshold **and** a sampling-noise allowance that grows as the sample shrinks, so lowering a threshold below that allowance has no effect. Lowering `noise_sigmas` is what makes checks more sensitive, at the cost of more false alarms.
+- `baseline_n_samples`: the number of rows the model's training schema was computed from, if you know it. Without it the baseline is treated as exact, which makes small training sets (a few hundred rows) false-alarm noticeably more often.
+- `df` is summarized with `get_schema()`, so types are inferred from dtypes. If the model's schema uses hand-tuned types (ordinal features, for example), a column can show up as `type_changed`; build the summary yourself and pass it as `schema=`.
+
+```python
+result = proxyml.check_data_drift("my-model", todays_df, label="2026-11-24", baseline_n_samples=4200)
+if not result["passed"]:
+    for f in result["features"]:
+        if f["status"] != "ok":
+            print(f["name"], f["reasons"])
+```
+
+Returns `None` if the request failed (for example, an unknown model).
+
+### `list_drift_checks(model_id, limit=20)`
+
+Recent verdicts for a model, newest first (summary only).
+
+### `get_drift_check(model_id, snapshot_id)`
+
+One stored verdict with its per-feature findings.
+
 ## Account
 
 ### `health_check()`

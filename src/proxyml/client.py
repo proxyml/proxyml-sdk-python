@@ -926,3 +926,102 @@ def get_challenger_summary(*, ci_token: str | None = None) -> dict | None:
         r.text,
     )
     return None
+
+
+def check_data_drift(
+    model_id: str,
+    df: pd.DataFrame | None = None,
+    *,
+    schema: FeatureSchema | None = None,
+    label: str | None = None,
+    thresholds: dict | None = None,
+    baseline_n_samples: int | None = None,
+) -> dict | None:
+    """
+    Compares a batch of recent data against the data a model was trained on and
+    returns a drift verdict.
+
+    Only summary statistics leave your machine (means, standard deviations,
+    category names with their frequencies, count rates) -- never rows. Each feature's marginal
+    distribution is compared with the model's stored schema; correlations
+    between features are not checked. The verdict is also stored (the last
+    100 per model are kept) -- see list_drift_checks().
+
+    Args:
+        model_id (str): the surrogate whose training schema is the baseline.
+        df (DataFrame): recent data, with the same columns as the training data.
+            Summarized with get_schema(), so column types are inferred from
+            dtypes; if the model's schema uses hand-tuned types (e.g. ordinal),
+            pass ``schema`` instead.
+        schema (FeatureSchema): pre-built summary of ``df`` that replaces the
+            inferred one. ``df`` is still required, for its row count.
+        label (str): free-text tag stored with the check, e.g. a date or commit.
+        thresholds (dict): overrides of the drift policy, any of mean_shift,
+            std_ratio, category_tvd, count_rel_change, new_category_mass,
+            noise_sigmas, min_samples. Omitted values use the server defaults.
+        baseline_n_samples (int): rows the training schema was computed from, if
+            you know it. Widens the sampling-noise allowance; strongly
+            recommended when the training set was small.
+
+    Returns:
+        dict with ``status`` ("pass", "drift" or "insufficient_sample"),
+        ``passed``, ``summary`` counts and per-feature ``features`` findings,
+        or None if the request failed. Drift is a normal response, not an
+        error: check ``result["passed"]``.
+    """
+    if df is None:
+        raise ValueError("df is required (its row count is the sample size, even if schema= is given)")
+    if len(df) == 0:
+        raise ValueError("df has no rows")
+    summary = schema if schema is not None else get_schema(df)
+    payload: dict = {"n_samples": int(len(df)), "features": summary.to_dict()["features"]}
+    if label is not None:
+        payload["label"] = label
+    if thresholds:
+        payload["thresholds"] = thresholds
+    if baseline_n_samples is not None:
+        payload["baseline_n_samples"] = baseline_n_samples
+    r = post(endpoint=f'/surrogate/{model_id}/data-drift', payload=payload)
+    if r.status_code == 200:
+        result = r.json()
+        if result.get("summary", {}).get("type_changed"):
+            logger.warning(
+                "Some features changed type versus the model's schema. If the schema uses "
+                "hand-tuned types (e.g. ordinal), build the summary yourself and pass schema=."
+            )
+        return result
+    logger.error(
+        "Data drift check failed with status %s: %s",
+        r.status_code,
+        r.text,
+    )
+    return None
+
+
+def list_drift_checks(model_id: str, limit: int = 20) -> dict | None:
+    """
+    Lists a model's recent data drift verdicts, newest first (the last 100 are kept).
+
+    Returns:
+        dict with ``snapshots`` (id, created_at, label, status, passed, n_samples,
+        summary), or None if an error occurred.
+    """
+    r = get(endpoint=f'/surrogate/{model_id}/data-drift', params={'limit': limit})
+    if r.status_code == 200:
+        return r.json()
+    logger.error("Listing drift checks failed with status %s: %s", r.status_code, r.text)
+    return None
+
+
+def get_drift_check(model_id: str, snapshot_id: str) -> dict | None:
+    """
+    Fetches one stored drift verdict, including its per-feature findings.
+
+    Returns:
+        The same dict check_data_drift() returned, or None if an error occurred.
+    """
+    r = get(endpoint=f'/surrogate/{model_id}/data-drift/{snapshot_id}')
+    if r.status_code == 200:
+        return r.json()
+    logger.error("Fetching drift check failed with status %s: %s", r.status_code, r.text)
+    return None

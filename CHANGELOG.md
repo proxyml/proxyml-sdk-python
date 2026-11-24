@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-11-24
+
+### Added
+- `check_data_drift(model_id, df, ...)`, `list_drift_checks(model_id)` and
+  `get_drift_check(model_id, snapshot_id)`: compare recent data against the
+  data a model was trained on. The summary statistics are computed locally and
+  only those are sent; the verdict (`pass` / `drift` / `insufficient_sample`,
+  with per-feature findings) is stored server-side, last 100 per model.
+  Thresholds are tunable per call. Requires alposit 0.3.0 or later.
+
 ## [0.10.0] - 2026-08-30
 
 ### Added

@@ -113,6 +113,8 @@ See [`docs/challenger.md`](docs/challenger.md) for the end-to-end challenger flo
 | `proxyml.local.train_auto_challenger(data, target_col, ...)` | Load data + train a local challenger in one call |
 | `upload_challenger(payload, ci_token=None)` | Upload a challenger comparison headlessly, e.g. from CI (`PROXYML_CI_TOKEN`, not `PROXYML_API_KEY`) |
 | `get_challenger_summary(ci_token=None)` | Fetch a CI-ready summary of the latest challenger comparison |
+| `check_data_drift(model_id, df, ...)` | Compare recent data against a model's training data (statistics only leave your machine); returns a pass/drift verdict |
+| `list_drift_checks(model_id)` / `get_drift_check(model_id, snapshot_id)` | Browse stored drift verdicts |
 | `proxyml.ci.post_challenger_comment(...)` | Post/update a sticky PR comment with the challenger comparison |
 
 Full documentation: [`docs/api.md`](docs/api.md)

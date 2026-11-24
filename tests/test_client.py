@@ -40,6 +40,9 @@ from proxyml.client import (
     train_auto_surrogate,
     update_model,
     upload_challenger,
+    check_data_drift,
+    list_drift_checks,
+    get_drift_check,
 )
 
 
@@ -1111,3 +1114,59 @@ def test_get_challenger_summary_failure_returns_none(mock_get, monkeypatch):
     monkeypatch.setenv("PROXYML_CI_TOKEN", "test-ci-token")
     mock_get.return_value = _mock_response(404, {"detail": "no challenger uploaded"})
     assert get_challenger_summary() is None
+
+
+# ---------------------------------------------------------------------------
+# data drift
+# ---------------------------------------------------------------------------
+
+@patch("proxyml.client.post")
+def test_check_data_drift_sends_summary_not_rows(mock_post):
+    verdict = {"status": "pass", "passed": True, "summary": {"drifted": 0}, "features": []}
+    mock_post.return_value = _mock_response(200, verdict)
+    df = pd.DataFrame({"a": [1.0, 2.0, 3.0], "b": ["x", "y", "x"]})
+
+    result = check_data_drift("m1", df, label="nightly", thresholds={"mean_shift": 0.5}, baseline_n_samples=900)
+
+    assert result == verdict
+    kwargs = mock_post.call_args.kwargs
+    assert kwargs["endpoint"] == "/surrogate/m1/data-drift"
+    payload = kwargs["payload"]
+    assert payload["n_samples"] == 3
+    assert [f["name"] for f in payload["features"]] == ["a", "b"]
+    assert payload["label"] == "nightly"
+    assert payload["thresholds"] == {"mean_shift": 0.5}
+    assert payload["baseline_n_samples"] == 900
+    assert "covariance_matrix" not in payload
+    assert set(payload["features"][0]) <= {"name", "type", "immutable", "mean", "std", "min", "max"}  # statistics only
+
+
+@patch("proxyml.client.post")
+def test_check_data_drift_omits_optional_fields(mock_post):
+    mock_post.return_value = _mock_response(200, {"status": "pass", "summary": {}})
+    check_data_drift("m1", pd.DataFrame({"a": [1.0, 2.0]}))
+    assert set(mock_post.call_args.kwargs["payload"]) == {"n_samples", "features"}
+
+
+@patch("proxyml.client.post")
+def test_check_data_drift_failure_returns_none(mock_post):
+    mock_post.return_value = _mock_response(404, {"detail": "Model not found"})
+    assert check_data_drift("nope", pd.DataFrame({"a": [1.0]})) is None
+
+
+def test_check_data_drift_requires_rows():
+    with pytest.raises(ValueError):
+        check_data_drift("m1", None)
+    with pytest.raises(ValueError):
+        check_data_drift("m1", pd.DataFrame({"a": []}))
+
+
+@patch("proxyml.client.get")
+def test_list_and_get_drift_checks(mock_get):
+    mock_get.return_value = _mock_response(200, {"snapshots": []})
+    assert list_drift_checks("m1", limit=5) == {"snapshots": []}
+    mock_get.assert_called_with(endpoint="/surrogate/m1/data-drift", params={"limit": 5})
+    mock_get.return_value = _mock_response(200, {"snapshot_id": "s1"})
+    assert get_drift_check("m1", "s1") == {"snapshot_id": "s1"}
+    mock_get.return_value = _mock_response(404, {})
+    assert get_drift_check("m1", "zz") is None

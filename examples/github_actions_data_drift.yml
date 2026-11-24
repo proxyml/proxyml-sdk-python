@@ -1,0 +1,42 @@
+# Checks a recent batch of data against a ProxyML model's training data every
+# night and fails the run (so GitHub emails you) if it has drifted.
+#
+# Setup:
+#   1. Add repo secrets PROXYML_API_KEY (your account API key; the drift
+#      endpoints are not covered by the project-scoped CI token) and, as a
+#      repo variable, PROXYML_MODEL_ID.
+#   2. Copy this file to .github/workflows/proxyml-data-drift.yml.
+#   3. Replace the "fetch recent data" step with however your pipeline gets a
+#      recent batch (a query, a file in the repo, an artifact). Only summary
+#      statistics are sent to ProxyML, never the rows themselves.
+#
+# Past verdicts are stored by ProxyML (last 100 per model); see
+# proxyml.list_drift_checks().
+
+name: ProxyML data drift
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install proxyml pandas
+
+      - name: Fetch recent data
+        run: cp data/recent.csv recent.csv  # replace with your own source
+
+      - run: >
+          python examples/ci_data_drift_example.py
+          "${{ vars.PROXYML_MODEL_ID }}" recent.csv --label "${{ github.sha }}"
+        env:
+          PROXYML_API_KEY: ${{ secrets.PROXYML_API_KEY }}

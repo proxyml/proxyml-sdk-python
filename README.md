@@ -128,6 +128,7 @@ Full documentation: [`docs/api.md`](docs/api.md)
 - [`examples/testing_example.py`](examples/testing_example.py) — Using a surrogate as a reference model in CI
 - [`examples/surrogate_export_example.py`](examples/surrogate_export_example.py) — Exporting a surrogate and reproducing its predictions locally
 - [`examples/ci_challenger_example.py`](examples/ci_challenger_example.py) + [`examples/github_actions_challenger.yml`](examples/github_actions_challenger.yml) — Training a challenger and posting the comparison as a PR comment from CI
+- [`examples/ci_data_drift_example.py`](examples/ci_data_drift_example.py) + [`examples/github_actions_data_drift.yml`](examples/github_actions_data_drift.yml) — Nightly data drift check that fails the job when recent data has drifted from a model's training data
 
 ## License
 

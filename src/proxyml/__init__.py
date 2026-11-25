@@ -31,6 +31,7 @@ from proxyml.client import (
     check_data_drift,
     list_drift_checks,
     get_drift_check,
+    delete_drift_check,
 )
 from proxyml.schema_builder import get_schema
 
@@ -68,5 +69,6 @@ __all__ = [
     "check_data_drift",
     "list_drift_checks",
     "get_drift_check",
+    "delete_drift_check",
     "get_schema",
 ]

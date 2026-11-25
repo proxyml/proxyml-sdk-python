@@ -720,6 +720,10 @@ Recent verdicts for a model, newest first (summary only).
 
 One stored verdict with its per-feature findings.
 
+### `delete_drift_check(model_id, snapshot_id)`
+
+Deletes one stored verdict, for example a test run. Returns `True` on success and `False` if it wasn't found. Needs alposit 0.5.2+.
+
 ## Account
 
 ### `health_check()`

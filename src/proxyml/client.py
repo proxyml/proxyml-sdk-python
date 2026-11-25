@@ -1034,3 +1034,21 @@ def get_drift_check(model_id: str, snapshot_id: str) -> dict | None:
         return r.json()
     logger.error("Fetching drift check failed with status %s: %s", r.status_code, r.text)
     return None
+
+
+def delete_drift_check(model_id: str, snapshot_id: str) -> bool:
+    """
+    Deletes one stored data drift verdict, e.g. a test run you don't want in the
+    history. Needs alposit 0.5.2+.
+
+    Returns:
+        True on success, False if the check wasn't found or the request failed.
+    """
+    r = delete(endpoint=f'/surrogate/{model_id}/data-drift/{snapshot_id}')
+    if r.status_code == 204:
+        return True
+    if r.status_code == 404:
+        logger.warning("Drift check %s not found for model %s", snapshot_id, model_id)
+        return False
+    logger.error("Deleting drift check failed with status %s: %s", r.status_code, r.text)
+    return False

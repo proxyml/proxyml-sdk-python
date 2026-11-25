@@ -43,6 +43,7 @@ from proxyml.client import (
     check_data_drift,
     list_drift_checks,
     get_drift_check,
+    delete_drift_check,
 )
 
 
@@ -1186,3 +1187,14 @@ def test_train_auto_surrogate_records_row_count(mock_put_schema, mock_train):
     df = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "y": [0, 1, 0, 1]})
     train_auto_surrogate(df, "y", schema_name="s")
     assert mock_put_schema.call_args.kwargs["n_samples"] == 4
+
+
+@patch("proxyml.client.delete")
+def test_delete_drift_check(mock_delete):
+    mock_delete.return_value = _mock_response(204, None)
+    assert delete_drift_check("m1", "s1") is True
+    mock_delete.assert_called_once_with(endpoint="/surrogate/m1/data-drift/s1")
+    mock_delete.return_value = _mock_response(404, {"detail": "Drift check not found"})
+    assert delete_drift_check("m1", "zz") is False
+    mock_delete.return_value = _mock_response(500, {})
+    assert delete_drift_check("m1", "s1") is False

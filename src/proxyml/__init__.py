@@ -33,7 +33,7 @@ from proxyml.client import (
     get_drift_check,
     delete_drift_check,
 )
-from proxyml.schema_builder import get_schema
+from proxyml.schema_builder import get_schema, get_schema_like
 
 __version__ = _pkg_version("proxyml")
 
@@ -71,4 +71,5 @@ __all__ = [
     "get_drift_check",
     "delete_drift_check",
     "get_schema",
+    "get_schema_like",
 ]

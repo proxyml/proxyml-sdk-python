@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.13.0] - 2026-11-26
+
+### Added
+- `get_schema_like(df, baseline)`: summarize a DataFrame using an existing
+  schema's column types (ordinal, count, ...) instead of dtype inference.
+- `put_schema(..., source="data" | "hand_written")`: declare where a schema's
+  statistics came from. It is recorded with models trained on the schema and
+  reported as `baseline_source` on data drift checks (alposit 0.6.0+; older
+  servers ignore it). `train_auto_surrogate` declares `"data"`.
+
+### Changed
+- `check_data_drift` now fetches the model's schema and summarizes `df` using
+  its column types, so hand-tuned (ordinal) types no longer raise false
+  `type_changed` findings. Values that do not fit the model's type are still
+  reported as a type change. If the schema cannot be fetched it falls back to
+  dtype inference as before. New `align_to_model=False` turns this off.
+  It makes one extra GET per check.
+
 ## [0.12.1] - 2026-11-25
 
 ### Added

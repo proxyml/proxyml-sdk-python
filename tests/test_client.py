@@ -6,6 +6,7 @@ import pytest
 import requests
 
 from proxyml_core.export import SurrogateExport
+from proxyml.schema_builder import get_schema
 from proxyml_core.schema import FeatureSchema
 
 from proxyml.client import (
@@ -1121,8 +1122,9 @@ def test_get_challenger_summary_failure_returns_none(mock_get, monkeypatch):
 # data drift
 # ---------------------------------------------------------------------------
 
+@patch("proxyml.client.get", return_value=_mock_response(404, {}))
 @patch("proxyml.client.post")
-def test_check_data_drift_sends_summary_not_rows(mock_post):
+def test_check_data_drift_sends_summary_not_rows(mock_post, _get):
     verdict = {"status": "pass", "passed": True, "summary": {"drifted": 0}, "features": []}
     mock_post.return_value = _mock_response(200, verdict)
     df = pd.DataFrame({"a": [1.0, 2.0, 3.0], "b": ["x", "y", "x"]})
@@ -1142,17 +1144,83 @@ def test_check_data_drift_sends_summary_not_rows(mock_post):
     assert set(payload["features"][0]) <= {"name", "type", "immutable", "mean", "std", "min", "max"}  # statistics only
 
 
+@patch("proxyml.client.get", return_value=_mock_response(404, {}))
 @patch("proxyml.client.post")
-def test_check_data_drift_omits_optional_fields(mock_post):
+def test_check_data_drift_omits_optional_fields(mock_post, _get):
     mock_post.return_value = _mock_response(200, {"status": "pass", "summary": {}})
     check_data_drift("m1", pd.DataFrame({"a": [1.0, 2.0]}))
     assert set(mock_post.call_args.kwargs["payload"]) == {"n_samples", "features"}
 
 
+@patch("proxyml.client.get", return_value=_mock_response(404, {}))
 @patch("proxyml.client.post")
-def test_check_data_drift_failure_returns_none(mock_post):
+def test_check_data_drift_failure_returns_none(mock_post, _get):
     mock_post.return_value = _mock_response(404, {"detail": "Model not found"})
     assert check_data_drift("nope", pd.DataFrame({"a": [1.0]})) is None
+
+
+def _ordinal_baseline() -> dict:
+    return {"features": [
+        {"type": "numeric_ordinal", "name": "grade", "categories": [1, 2, 3], "mean": 2.0, "std": 0.8},
+        {"type": "categorical_ordinal", "name": "size", "categories": ["S", "M", "L"], "probabilities": [0.3, 0.4, 0.3]},
+        {"type": "count", "name": "visits", "lambda": 3.0, "max": 9},
+        {"type": "continuous", "name": "score", "mean": 0.0, "std": 1.0, "min": -3.0, "max": 3.0},
+    ]}
+
+
+@patch("proxyml.client.get")
+@patch("proxyml.client.post")
+def test_check_data_drift_follows_the_models_types(mock_post, mock_get):
+    mock_get.return_value = _mock_response(200, _ordinal_baseline())
+    mock_post.return_value = _mock_response(200, {"status": "pass", "summary": {}})
+    df = pd.DataFrame({
+        "grade": [1, 2, 3, 2, 2, 1],
+        "size": ["S", "M", "M", "L", "M", "XL"],
+        "visits": [1, 2, 3, 4, 5, 6],
+        "score": [1, 0, 2, -1, 0, 1],  # integer dtype, but the model says continuous
+    })
+    check_data_drift("m1", df)
+    mock_get.assert_called_once_with(endpoint="/surrogate/models/m1/schema", params={})
+    types = {f["name"]: f["type"] for f in mock_post.call_args.kwargs["payload"]["features"]}
+    assert types == {"grade": "numeric_ordinal", "size": "categorical_ordinal", "visits": "count", "score": "continuous"}
+    size = next(f for f in mock_post.call_args.kwargs["payload"]["features"] if f["name"] == "size")
+    assert size["categories"] == ["S", "M", "L", "XL"]  # baseline order first, new category appended
+    assert sum(size["probabilities"]) == pytest.approx(1.0)
+
+
+@patch("proxyml.client.get", return_value=_mock_response(404, {"detail": "nope"}))
+@patch("proxyml.client.post")
+def test_check_data_drift_falls_back_to_inferred_types_if_baseline_unavailable(mock_post, _get):
+    mock_post.return_value = _mock_response(200, {"status": "pass", "summary": {}})
+    check_data_drift("m1", pd.DataFrame({"grade": [1, 2, 3]}))
+    assert mock_post.call_args.kwargs["payload"]["features"][0]["type"] == "count"
+
+
+@patch("proxyml.client.get", side_effect=RuntimeError("network down"))
+@patch("proxyml.client.post")
+def test_check_data_drift_survives_baseline_fetch_error(mock_post, _get):
+    mock_post.return_value = _mock_response(200, {"status": "pass", "summary": {}})
+    assert check_data_drift("m1", pd.DataFrame({"grade": [1, 2, 3]})) is not None
+
+
+@patch("proxyml.client.get")
+@patch("proxyml.client.post")
+def test_check_data_drift_align_to_model_false_and_explicit_schema_skip_the_fetch(mock_post, mock_get):
+    mock_post.return_value = _mock_response(200, {"status": "pass", "summary": {}})
+    df = pd.DataFrame({"grade": [1, 2, 3]})
+    check_data_drift("m1", df, align_to_model=False)
+    check_data_drift("m1", df, schema=get_schema(df))
+    mock_get.assert_not_called()
+
+
+@patch("proxyml.client.get")
+@patch("proxyml.client.post")
+def test_check_data_drift_still_reports_a_real_type_change(mock_post, mock_get):
+    mock_get.return_value = _mock_response(200, _ordinal_baseline())
+    mock_post.return_value = _mock_response(200, {"status": "drift", "summary": {"type_changed": 1}})
+    df = pd.DataFrame({"score": ["high", "low", "high"]})  # a continuous feature that turned into text
+    check_data_drift("m1", df)
+    assert mock_post.call_args.kwargs["payload"]["features"][0]["type"] == "categorical"
 
 
 def test_check_data_drift_requires_rows():
@@ -1187,6 +1255,25 @@ def test_train_auto_surrogate_records_row_count(mock_put_schema, mock_train):
     df = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "y": [0, 1, 0, 1]})
     train_auto_surrogate(df, "y", schema_name="s")
     assert mock_put_schema.call_args.kwargs["n_samples"] == 4
+
+
+@patch("proxyml.client.put")
+def test_put_schema_sends_source_only_when_given(mock_put):
+    mock_put.return_value = _mock_response(200, {"features": []})
+    put_schema(FeatureSchema(features=[]), name="s")
+    assert "source" not in mock_put.call_args.kwargs["payload"]
+    put_schema(FeatureSchema(features=[]), name="s", source="hand_written")
+    assert mock_put.call_args.kwargs["payload"]["source"] == "hand_written"
+    with pytest.raises(ValueError):
+        put_schema(FeatureSchema(features=[]), name="s", source="guess")
+
+
+@patch("proxyml.client.train_surrogate")
+@patch("proxyml.client.put_schema")
+def test_train_auto_surrogate_declares_its_schema_as_data(mock_put_schema, mock_train):
+    mock_put_schema.return_value = FeatureSchema(features=[])
+    train_auto_surrogate(pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "y": [0, 1, 0, 1]}), "y", schema_name="s")
+    assert mock_put_schema.call_args.kwargs["source"] == "data"
 
 
 @patch("proxyml.client.delete")

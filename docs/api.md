@@ -37,7 +37,17 @@ Review and adjust the returned schema before uploading if needed — e.g. `schem
 
 ---
 
-### `put_schema(schema, name, n_samples=None)`
+### `get_schema_like(df, baseline)`
+
+Summarize a DataFrame using the column types of an existing schema (for example one from `get_model_schema()`), instead of inferring them from dtypes. `check_data_drift` does this for you; call it directly when you want to build the summary yourself.
+
+- A column the baseline has is summarized as the baseline's type when its values fit it (an integer column becomes `NumericOrdinalFeature` or `CategoricalOrdinalFeature` if that is what the model uses). Ordinal categories keep the baseline's order, with any new category appended.
+- Values that do not fit (text where the baseline has a continuous feature, a negative "count", non-integer "ordinal" values) are summarized as the type they look like, so a real type change is still reported.
+- Columns the baseline does not have are summarized as `get_schema()` would. Columns that are entirely empty are left out.
+
+---
+
+### `put_schema(schema, name, n_samples=None, source=None)`
 
 Upload a schema to the ProxyML API under a name. Schemas are named resources — `synthesize_data` and `train_surrogate` reference them by `schema_name`.
 
@@ -48,6 +58,7 @@ Upload a schema to the ProxyML API under a name. Schemas are named resources —
 | `schema` | `FeatureSchema` | Typically produced by `get_schema`. |
 | `name` | `str` | Name to store the schema under. Overwrites any existing schema with the same name. |
 | `n_samples` | `int \| None` | Rows the schema's statistics were computed from. Recorded with models trained on this schema so data drift checks can allow for noisy statistics from a small training set (alposit 0.4.0+; older servers ignore it). `train_auto_surrogate` passes it automatically. |
+| `source` | `str \| None` | `"data"` if the statistics were computed from real rows and not edited, `"hand_written"` if you wrote or tuned them by hand; leave it out if you are not sure. Recorded with models trained on this schema and reported as `baseline_source` on data drift checks. `train_auto_surrogate` passes `"data"` automatically. Models trained before this existed report `"unknown"` (alposit 0.6.0+; older servers ignore it). |
 
 **Returns** `FeatureSchema | None` — the stored schema on success, `None` on failure.
 
@@ -692,7 +703,7 @@ for entry in diff["coefficient_diff"]:
 
 Compare recent data against the data a model was trained on. Only summary statistics are sent (means, standard deviations, category names with their frequencies, count rates), never rows. Each feature is compared on its own (marginal distribution); changes in the *relationships* between features are not detected. Each verdict is stored, and the last 100 per model are kept.
 
-### `check_data_drift(model_id, df, *, schema=None, label=None, thresholds=None, baseline_n_samples=None)`
+### `check_data_drift(model_id, df, *, schema=None, label=None, thresholds=None, baseline_n_samples=None, align_to_model=True)`
 
 Summarizes `df` locally and returns a verdict against the model's stored training schema.
 
@@ -700,7 +711,8 @@ Summarizes `df` locally and returns a verdict against the model's stored trainin
 - `features` lists per-feature findings (metric values, noise floors, and human-readable `reasons`). Added, removed or type-changed columns are reported as findings too.
 - `thresholds` overrides the policy per call: `mean_shift` (default 0.2, in baseline standard deviations), `std_ratio` (1.4), `category_tvd` (0.08), `count_rel_change` (0.2), `new_category_mass` (0.02), `noise_sigmas` (auto) and `min_samples` (100). A feature is flagged only when a metric exceeds its threshold **and** a sampling-noise allowance that grows as the sample shrinks, so lowering a threshold below that allowance has no effect. Lowering `noise_sigmas` is what makes checks more sensitive, at the cost of more false alarms.
 - `baseline_n_samples`: the number of rows the model's training schema was computed from. Defaults to the count recorded when the schema was uploaded (`train_auto_surrogate` and `put_schema(..., n_samples=)` record it; the result's `baseline_n_source` says whether it came from `"request"` or `"schema"`). If neither is available the baseline is treated as exact, which makes small training sets (a few hundred rows) false-alarm noticeably more often, so pass it for models whose schema was uploaded without a count.
-- `df` is summarized with `get_schema()`, so types are inferred from dtypes. If the model's schema uses hand-tuned types (ordinal features, for example), a column can show up as `type_changed`; build the summary yourself and pass it as `schema=`.
+- `df` is summarized using the model's own column types (`align_to_model=True`, the default): the model's schema is fetched first and each column is summarized as the type the model gives it when its values fit, so hand-tuned types such as ordinal features no longer show up as false `type_changed` findings. Values that do not fit are summarized as what they look like, so a real type change is still reported. See `get_schema_like()`. If the schema cannot be fetched the check carries on with types inferred from dtypes; pass `align_to_model=False` to always infer them (no extra request), or `schema=` to supply the summary yourself.
+- The result's `baseline_source` says how the model's schema was produced, as declared when it was uploaded: `"data"`, `"hand_written"` or `"unknown"` (the default, and what models trained before this was recorded report). A hand-written baseline can legitimately differ from the data it was meant to describe, so read its findings accordingly.
 
 ```python
 result = proxyml.check_data_drift("my-model", todays_df, label="2026-11-24", baseline_n_samples=4200)

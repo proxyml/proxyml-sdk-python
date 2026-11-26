@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 from pandas.api.types import is_float_dtype, is_integer_dtype
 
-from proxyml.schema_builder import get_schema
+from proxyml.schema_builder import get_schema, get_schema_like
 from proxyml_core.export import SurrogateExport
 from proxyml_core.schema import FeatureSchema
 
@@ -186,7 +186,9 @@ def delete(endpoint: str) -> requests.models.Response | _ErrorResponse:
         return _ErrorResponse()
 
 
-def put_schema(schema: FeatureSchema, name: str, n_samples: int | None = None) -> FeatureSchema | None:
+def put_schema(
+    schema: FeatureSchema, name: str, n_samples: int | None = None, source: str | None = None,
+) -> FeatureSchema | None:
     """
     Uploads a data schema.
 
@@ -197,12 +199,21 @@ def put_schema(schema: FeatureSchema, name: str, n_samples: int | None = None) -
             if known. Stored with surrogates trained on this schema so that data
             drift checks can allow for how noisy a small training set's statistics
             are. Needs alposit 0.4.0+; older servers ignore it.
+        source (str): where the schema's statistics came from: "data" (computed
+            from real rows, e.g. by get_schema() and not edited) or "hand_written".
+            Leave it out if you are not sure. Recorded with surrogates trained on
+            this schema and reported as ``baseline_source`` on data drift checks.
+            Older servers ignore it.
     Returns:
         The stored FeatureSchema, or None if the return code was not 200.
     """
+    if source is not None and source not in ("data", "hand_written"):
+        raise ValueError("source must be 'data', 'hand_written' or None")
     payload = schema.to_dict()
     if n_samples is not None:
         payload['n_samples'] = int(n_samples)
+    if source is not None:
+        payload['source'] = source
     r = put(endpoint=f'/schema/{name}', payload=payload)
     if r.status_code == 200:
         logger.info("Schema '%s' uploaded successfully", name)
@@ -409,7 +420,7 @@ def train_auto_surrogate(
     features_df = df.drop(columns=[target_col])
 
     schema = get_schema(features_df, immutable_cols=immutable_cols)
-    if put_schema(schema, name=schema_name, n_samples=len(features_df)) is None:
+    if put_schema(schema, name=schema_name, n_samples=len(features_df), source="data") is None:
         return None
 
     return train_surrogate(
@@ -935,6 +946,18 @@ def get_challenger_summary(*, ci_token: str | None = None) -> dict | None:
     return None
 
 
+def _fetch_baseline_schema(model_id: str) -> FeatureSchema | None:
+    """The schema a model was trained with, or None (quietly) if it cannot be fetched."""
+    try:
+        r = get(endpoint=f'/surrogate/models/{model_id}/schema', params=dict())
+        if r.status_code == 200:
+            return FeatureSchema.from_dict(r.json())
+        logger.debug("Could not fetch the model's schema (status %s); inferring types from dtypes", r.status_code)
+    except Exception as e:  # a failed lookup must never fail the drift check itself
+        logger.debug("Could not fetch the model's schema (%s); inferring types from dtypes", e)
+    return None
+
+
 def check_data_drift(
     model_id: str,
     df: pd.DataFrame | None = None,
@@ -943,6 +966,7 @@ def check_data_drift(
     label: str | None = None,
     thresholds: dict | None = None,
     baseline_n_samples: int | None = None,
+    align_to_model: bool = True,
 ) -> dict | None:
     """
     Compares a batch of recent data against the data a model was trained on and
@@ -957,11 +981,13 @@ def check_data_drift(
     Args:
         model_id (str): the surrogate whose training schema is the baseline.
         df (DataFrame): recent data, with the same columns as the training data.
-            Summarized with get_schema(), so column types are inferred from
-            dtypes; if the model's schema uses hand-tuned types (e.g. ordinal),
-            pass ``schema`` instead.
+            Each column is summarized as the type the model's schema gives it
+            (ordinal, count, ...) when its values fit that type -- see
+            get_schema_like() -- so hand-tuned types do not raise false
+            ``type_changed`` findings. Values that do not fit are summarized as
+            what they look like, so a real type change is still reported.
         schema (FeatureSchema): pre-built summary of ``df`` that replaces the
-            inferred one. ``df`` is still required, for its row count.
+            automatic one. ``df`` is still required, for its row count.
         label (str): free-text tag stored with the check, e.g. a date or commit.
         thresholds (dict): overrides of the drift policy, any of mean_shift,
             std_ratio, category_tvd, count_rel_change, new_category_mass,
@@ -971,6 +997,10 @@ def check_data_drift(
             when the schema was uploaded (train_auto_surrogate and
             put_schema(..., n_samples=) record it); pass it explicitly for
             models whose schema was uploaded without one, especially small ones.
+        align_to_model (bool): fetch the model's schema first and follow its
+            column types (default). Set False to infer types from dtypes with
+            get_schema(), or if you do not want the extra request. If the
+            schema cannot be fetched the check proceeds with inferred types.
 
     Returns:
         dict with ``status`` ("pass", "drift" or "insufficient_sample"),
@@ -982,7 +1012,13 @@ def check_data_drift(
         raise ValueError("df is required (its row count is the sample size, even if schema= is given)")
     if len(df) == 0:
         raise ValueError("df has no rows")
-    summary = schema if schema is not None else get_schema(df)
+    aligned = False
+    if schema is not None:
+        summary = schema
+    else:
+        baseline = _fetch_baseline_schema(model_id) if align_to_model else None
+        aligned = baseline is not None
+        summary = get_schema_like(df, baseline) if aligned else get_schema(df)
     payload: dict = {"n_samples": int(len(df)), "features": summary.to_dict()["features"]}
     if label is not None:
         payload["label"] = label
@@ -994,10 +1030,17 @@ def check_data_drift(
     if r.status_code == 200:
         result = r.json()
         if result.get("summary", {}).get("type_changed"):
-            logger.warning(
-                "Some features changed type versus the model's schema. If the schema uses "
-                "hand-tuned types (e.g. ordinal), build the summary yourself and pass schema=."
-            )
+            if aligned:
+                logger.warning(
+                    "Some features changed type versus the model's schema: their values no "
+                    "longer fit the type the model was trained with (see the type_changed findings)."
+                )
+            else:
+                logger.warning(
+                    "Some features changed type versus the model's schema. If the schema uses "
+                    "hand-tuned types (e.g. ordinal), leave align_to_model=True or build the "
+                    "summary yourself and pass schema=."
+                )
         return result
     logger.error(
         "Data drift check failed with status %s: %s",

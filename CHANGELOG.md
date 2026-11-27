@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Array features (v1): a DataFrame column of equal-length numeric vectors
+  (embeddings etc.) becomes an immutable `ArrayFeature` in `get_schema()` /
+  `get_schema_like()`: only a summary (width, centroid, rms radius) is stored.
+  Array values are **never sent**: every function that sends instances or
+  samples (`train_surrogate`, `train_auto_surrogate`, `predict*`,
+  `explain_local*`, `find_counterfactual*`, `synthesize_data(sample=)`) replaces
+  list/tuple/ndarray values with `None`, and `find_counterfactual*` /
+  `synthesize_data(sample=)` put your local array back into the results. A
+  global `synthesize_data()` returns `None` array columns unless you pass the new
+  `array_source=` DataFrame (your own rows, used locally to fill them).
+  `check_data_drift` sends the summary only. Fewer than 50 rows is refused (the
+  centroid of a few vectors leaks them), and ragged, non-numeric or NaN vectors
+  raise `ValueError`. See `docs/array-features.md`. Needs `proxyml-core` and a
+  server with array-feature support; older clients fail when they fetch such a
+  schema.
+
 ## [0.13.0] - 2026-11-26
 
 ### Added

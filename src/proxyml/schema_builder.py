@@ -5,6 +5,7 @@ import pandas as pd
 from pandas.api.types import is_float_dtype, is_integer_dtype
 
 from proxyml_core.schema import (
+    ArrayFeature,
     CategoricalFeature,
     CategoricalOrdinalFeature,
     ContinuousFeature,
@@ -42,6 +43,61 @@ def _count_feature(s: pd.Series, name: str | None = None, immutable: bool = Fals
     )
 
 
+# ── array columns (embeddings etc.) ──────────────────────────────────────────
+#
+# A column whose cells are equal-length numeric vectors becomes an ArrayFeature:
+# a summary (width, centroid, rms radius) and nothing else. The vectors are never
+# uploaded, and the server never sees them: in every request the array's slot is
+# sent as null (see proxyml.client). Always immutable.
+
+# Fewer rows than this and the centroid of a handful of vectors sits close to the
+# vectors themselves, so the "summary" would leak individual rows. Matches the
+# smallest cluster size the array-feature spikes treated as safe.
+MIN_ARRAY_ROWS = 50
+
+
+def _is_vector(v) -> bool:
+    return isinstance(v, (list, tuple, np.ndarray))
+
+
+def _array_matrix(s: pd.Series, name: str) -> np.ndarray:
+    """Stack a column of vectors into an (n_rows, width) float matrix, or raise ValueError."""
+    if any(v is None or (not _is_vector(v) and pd.isna(v)) for v in s):
+        raise ValueError(f"Array column '{name}' has missing rows; drop or fill them first")
+    try:
+        mat = np.array([np.asarray(v, dtype=float) for v in s], dtype=float)
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Array column '{name}' must contain equal-length numeric vectors ({e})") from None
+    if mat.ndim != 2:
+        raise ValueError(f"Array column '{name}' must contain equal-length, one-dimensional numeric vectors")
+    if mat.shape[1] < 2:
+        raise ValueError(f"Array column '{name}': vectors must have at least 2 values")
+    if not np.isfinite(mat).all():
+        raise ValueError(f"Array column '{name}' contains NaN or infinite values")
+    return mat
+
+
+def _is_array_column(s: pd.Series) -> bool:
+    """True if every non-null cell of an object column is a list/tuple/ndarray (and there is at least one)."""
+    if s.dtype != object:
+        return False
+    cells = [v for v in s if not (v is None or (not _is_vector(v) and pd.isna(v)))]
+    return bool(cells) and all(_is_vector(v) for v in cells)
+
+
+def _array_feature(s: pd.Series, name: str | None = None) -> ArrayFeature:
+    name = name or s.name
+    mat = _array_matrix(s, name)
+    if len(mat) < MIN_ARRAY_ROWS:
+        raise ValueError(
+            f"Array column '{name}' has {len(mat)} rows; at least {MIN_ARRAY_ROWS} are needed, "
+            "because the centroid of a few vectors is nearly the vectors themselves"
+        )
+    mean = mat.mean(axis=0)
+    radius = float(np.sqrt(((mat - mean) ** 2).sum(axis=1).mean()))
+    return ArrayFeature(name=name, width=mat.shape[1], mean=mean.tolist(), rms_radius=radius)
+
+
 def get_schema(df: pd.DataFrame, immutable_cols: list[str] | None = None) -> FeatureSchema:
     """
     Generates a data schema for a pandas DataFrame, based on the data types of the columns.
@@ -51,7 +107,9 @@ def get_schema(df: pd.DataFrame, immutable_cols: list[str] | None = None) -> Fea
         immutable_cols (list): list of columns to consider immutable. These columns will
             have schema entries, but the surrogate will _not_ use them for inference.
     Returns:
-        FeatureSchema. Review and adjust as needed — integer columns default to count
+        FeatureSchema. Columns of equal-length numeric vectors (lists, tuples or arrays,
+        e.g. embeddings) become immutable ArrayFeatures holding only a summary; they need
+        at least 50 rows. Review and adjust as needed — integer columns default to count
         type; consider categorical_ordinal for ordered categories like ratings or
         class labels.
     """
@@ -63,6 +121,9 @@ def get_schema(df: pd.DataFrame, immutable_cols: list[str] | None = None) -> Fea
     features: list[Feature] = []
     for col in df.columns:
         immutable = immutable_cols is not None and col in immutable_cols
+        if _is_array_column(df[col]):
+            features.append(_array_feature(df[col]))  # always immutable
+            continue
         if is_float_dtype(df[col]):
             feature = _continuous_feature(df[col], immutable=immutable)
         elif df[col].dtype == bool:
@@ -117,6 +178,11 @@ def _as_observed(s: pd.Series, name: str, nums: pd.Series | None, immutable: boo
 
 def _summarize_like(base: Feature, s: pd.Series) -> Feature:
     name, immutable = base.name, base.immutable
+    if isinstance(base, ArrayFeature):
+        if _is_array_column(s):
+            return _array_feature(s, name=name)  # a different width shows up as a type_changed finding
+        # not vectors any more: summarize as what it looks like, so the change is reported
+        return get_schema(s.to_frame(name=name)).features[0]
     nums = _as_numbers(s)
     if isinstance(base, ContinuousFeature):
         if nums is None:

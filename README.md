@@ -84,7 +84,7 @@ if cf is not None:
     print(explanation)
 ```
 
-See [`docs/challenger.md`](docs/challenger.md) for the end-to-end challenger flow (train, upload, CI, PR comments), [`docs/quickstart.md`](docs/quickstart.md) for a full walkthrough and [`docs/api.md`](docs/api.md) for complete API reference.
+See [`docs/array-features.md`](docs/array-features.md) for embeddings and other vector columns, [`docs/challenger.md`](docs/challenger.md) for the end-to-end challenger flow (train, upload, CI, PR comments), [`docs/quickstart.md`](docs/quickstart.md) for a full walkthrough and [`docs/api.md`](docs/api.md) for complete API reference.
 
 ## Core Concepts
 

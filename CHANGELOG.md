@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `examples/array_features_smoke_test.py`: end-to-end check of array features against a live server (19 checks, about 15 API calls, cleans up after itself).
+
 ## [0.14.0] - 2026-11-27
 
 ### Added

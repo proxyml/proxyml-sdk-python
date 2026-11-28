@@ -67,7 +67,7 @@ vectors themselves.
   `proxyml.check_data_drift()`.
 - **Versions:** a schema containing an array feature can only be read by this version
   or later of `proxyml`, `proxyml-core` and the server.
-- The local challenger ignores array columns.
+- The local challenger ignores array columns (`train_challenger` warns and trains on the other features; a schema with only array features raises `ValueError`).
 
 Why this shape: see `proxyml-core/docs/array-features-spec.md`, which records what we
 tried for a fuller solution (modelling the array inside the surrogate) and why it was

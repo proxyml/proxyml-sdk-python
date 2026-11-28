@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `train_challenger` / `train_auto_challenger` now warn when the schema has array features (they are left out of the challenger) and raise `ValueError` if there is nothing else to train on, instead of dropping them silently.
+
 ### Added
 - `examples/array_features_smoke_test.py`: end-to-end check of array features against a live server (19 checks, about 15 API calls, cleans up after itself).
 

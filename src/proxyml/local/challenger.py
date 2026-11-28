@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from dataclasses import dataclass, replace
 from enum import Enum
 from importlib.metadata import version as _pkg_version
@@ -250,6 +251,19 @@ def train_challenger(
     if feature_names is not None:
         name_to_feature = {f.name: f for f in features}
         features = [name_to_feature[n] for n in feature_names]
+    arrays = [f.name for f in features if f.type == "array"]
+    if arrays:
+        # A linear challenger can't use embeddings (and their values must stay local),
+        # so they are left out explicitly rather than dropped silently downstream.
+        warnings.warn(
+            f"Array features ({', '.join(arrays)}) are not used by the local challenger; "
+            "it is trained on the remaining features only.",
+            UserWarning,
+            stacklevel=2,
+        )
+        features = [f for f in features if f.type != "array"]
+        if not features:
+            raise ValueError("The schema has only array features; there is nothing to train a challenger on")
     col_order = [f.name for f in features]
 
     X = df[col_order].to_numpy(dtype=object)

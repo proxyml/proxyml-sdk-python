@@ -489,3 +489,26 @@ def test_fingerprint_labels_is_public_and_matches_target_fingerprint():
     result = train_challenger(df, target, _schema(), task="classification")
 
     assert fingerprint_labels(target) == result.target_fingerprint
+
+
+def test_array_features_are_left_out_with_a_warning():
+    rng = np.random.default_rng(0)
+    n = 200
+    df = pd.DataFrame({
+        "age": rng.normal(40, 10, n),
+        "income": rng.normal(50, 9, n),
+        "emb": list(rng.normal(size=(n, 8))),
+    })
+    y = (df["age"] > 40).astype(int).to_numpy()
+    schema = get_schema(df)
+    with pytest.warns(UserWarning, match="Array features \\(emb\\)"):
+        result = train_challenger(df, y, schema)
+    assert [f.name for f in result.export.features] == ["age", "income"]
+
+
+def test_array_only_schema_cannot_train_a_challenger():
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({"emb": list(rng.normal(size=(100, 4)))})
+    y = rng.integers(0, 2, 100)
+    with pytest.warns(UserWarning), pytest.raises(ValueError, match="only array features"):
+        train_challenger(df, y, get_schema(df))
